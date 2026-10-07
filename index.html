@@ -44,6 +44,7 @@
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>#map{height:280px;border-radius:10px;margin-top:10px;display:none;}</style>
 </head>
 <body>
@@ -126,6 +127,7 @@
 
   <div class="card">
     <h2>Recent sightings (for entomologists)</h2>
+    <p class="muted" id="dbStatus">🔄 Connecting…</p>
     <div class="row" style="margin-bottom:10px">
       <button class="btn-small btn-export" id="exportBtn">⬇ Export CSV</button>
       <button class="btn-small" id="clearAll">Delete all (demo)</button>
@@ -139,7 +141,7 @@
   </div>
 </main>
 
-<footer>Demo prototype for class — runs 100% offline except map. Data saved in browser localStorage.</footer>
+<footer>Class project — shared cloud DB (Supabase) when configured, otherwise local demo. Judges: check Supabase Table Editor.</footer>
 
 <script>
 let gps = null;
@@ -178,23 +180,53 @@ document.getElementById('photo').onchange = e => {
   img.src = URL.createObjectURL(f); img.style.display='block';
 };
 
-function getReports(){ try{ return JSON.parse(localStorage.getItem('lantern_reports')||'[]'); }catch{ return []; } }
-function saveReports(r){ localStorage.setItem('lantern_reports', JSON.stringify(r)); }
+// ===== Shared cloud DB (Supabase) + local fallback =====
+// 1. Create free project at https://supabase.com -> get URL + anon key
+// 2. Run supabase-schema.sql in SQL Editor
+// 3. Paste values below, commit + push -> everyone shares the same DB
+// Judges can view data live in Supabase Dashboard -> Table Editor.
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+let useCloud = false, sb = null, cache = [];
+const dbStatus = document.getElementById('dbStatus');
 
-form.onsubmit = e => {
+function getReports(){ return cache; }
+function saveLocal(r){ try{ localStorage.setItem('lantern_reports', JSON.stringify(r)); }catch{} }
+function loadLocal(){ try{ cache = JSON.parse(localStorage.getItem('lantern_reports')||'[]'); }catch{ cache = []; } }
+
+async function initDB(){
+  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) { loadLocal(); dbStatus.textContent = '📱 Local demo mode — set SUPABASE_URL/KEY in index.html to enable shared cloud DB.'; render(); return; }
+  try {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data, error } = await sb.from('lantern_reports').select('*').order('created_at', { ascending:false }).limit(100);
+    if (error) throw error;
+    useCloud = true;
+    cache = (data||[]).map(r => ({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'' }));
+    dbStatus.textContent = '☁️ Shared cloud DB connected — ' + cache.length + ' reports visible to everyone. Judges: Supabase → Table Editor → lantern_reports';
+  } catch(err) {
+    loadLocal();
+    dbStatus.textContent = '⚠️ Cloud DB failed (' + err.message + ') — using local mode.';
+  }
+  render();
+}
+
+form.onsubmit = async e => {
   e.preventDefault();
   const d = new FormData(form);
-  const rep = {
-    id: Date.now(),
-    date: new Date().toLocaleString(),
-    iso: new Date().toISOString(),
-    stage: d.get('stage'), count: d.get('count'), action: d.get('action'),
-    lat: gps?.lat||'', lng: gps?.lng||'',
-    place: document.getElementById('place').value.trim()
-  };
-  if(!rep.stage||!rep.count||!rep.action){ document.getElementById('msg').textContent='Please answer Q1-Q3.'; return; }
-  const all = getReports(); all.unshift(rep); saveReports(all);
-  document.getElementById('msg').textContent='✅ Thanks! Report saved. Entomologists can see it below.';
+  const stage = d.get('stage'), count = d.get('count'), action = d.get('action');
+  const place = document.getElementById('place').value.trim();
+  if(!stage||!count||!action){ document.getElementById('msg').textContent='Please answer Q1-Q3.'; return; }
+  document.getElementById('msg').textContent='Saving…';
+  if (useCloud) {
+    const { data, error } = await sb.from('lantern_reports').insert([{ stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null }]).select();
+    if (error) { document.getElementById('msg').textContent='Save failed: '+error.message; return; }
+    const r = data[0];
+    cache.unshift({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'' });
+  } else {
+    const rep = { id: Date.now(), date: new Date().toLocaleString(), iso: new Date().toISOString(), stage, count, action, lat: gps?.lat||'', lng: gps?.lng||'', place };
+    cache.unshift(rep); saveLocal(cache);
+  }
+  document.getElementById('msg').textContent='✅ Thanks! Report saved. Everyone can see it below.';
   form.reset(); document.getElementById('preview').style.display='none';
   render();
 };
@@ -213,18 +245,27 @@ function render(){
       <br><button class="btn-small" onclick="delRep(${r.id})">delete</button>
     </div>`).join('');
 }
-window.delRep = id => { saveReports(getReports().filter(r=>r.id!==id)); render(); };
+window.delRep = async id => {
+  if (useCloud) { const { error } = await sb.from('lantern_reports').delete().eq('id', id); if (error) { alert('Delete failed: '+error.message); return; } cache = cache.filter(r=>r.id!==id); }
+  else { cache = cache.filter(r=>r.id!==id); saveLocal(cache); }
+  render();
+};
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-document.getElementById('clearAll').onclick = () => { if(confirm('Delete all demo reports?')){ localStorage.removeItem('lantern_reports'); render(); } };
+document.getElementById('clearAll').onclick = async () => {
+  if(!confirm('Delete all reports? (cloud: deletes shared data!)')) return;
+  if (useCloud) { await sb.from('lantern_reports').delete().neq('id', 0); const { data } = await sb.from('lantern_reports').select('*').order('created_at',{ascending:false}).limit(100); cache = []; }
+  else { localStorage.removeItem('lantern_reports'); cache = []; }
+  render();
+};
 document.getElementById('exportBtn').onclick = () => {
   const all = getReports(); if(!all.length){ alert('No data yet'); return; }
-  const csv = 'date,stage,count,action,lat,lng,place\n' + all.map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
+  const csv = 'date,stage,count,action,lat,lng,place\n' + getReports().map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download = 'lanternfly_reports.csv'; a.click();
 };
-render();
+initDB();
 </script>
 </body>
 </html>
