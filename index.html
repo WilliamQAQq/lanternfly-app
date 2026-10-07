@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Spot-a-Lanternfly — Help Entomologists</title>
+<style>
+  :root { --red:#c0392b; --dark:#222; --green:#1e8449; --bg:#f7f5f0; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--dark); }
+  header { background:var(--dark); color:white; padding:28px 20px; text-align:center; }
+  header h1 { margin:0 0 8px; font-size:28px; }
+  header p { margin:0; opacity:.85; }
+  header .badge { display:inline-block; background:var(--red); color:#fff; padding:4px 12px; border-radius:20px; font-size:13px; margin-bottom:12px; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
+  .card { background:var(--card); border-radius:12px; padding:20px; margin:16px 0; box-shadow:0 2px 10px rgba(0,0,0,.06); border:1px solid #e8e2d9; }
+  h2 { margin:0 0 10px; font-size:20px; }
+  .muted { color:#666; font-size:14px; }
+  .q { margin:16px 0; padding:12px; background:#fafafa; border-radius:8px; border:1px solid #eee; }
+  .q-title { font-weight:700; margin-bottom:8px; }
+  .opts { display:flex; flex-wrap:wrap; gap:8px; }
+  .opts label { border:2px solid #ddd; border-radius:20px; padding:8px 14px; cursor:pointer; font-size:14px; user-select:none; }
+  .opts input { display:none; }
+  .opts input:checked + span { font-weight:700; }
+  .opts label:has(input:checked) { border-color:var(--green); background:#eafaf1; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  input[type=text], input[type=datetime-local] { width:100%; padding:10px 12px; border:1px solid #ccc; border-radius:8px; font-size:15px; }
+  button { cursor:pointer; border:none; border-radius:8px; padding:12px 18px; font-size:15px; font-weight:700; }
+  .btn-primary { background:var(--green); color:white; width:100%; margin-top:12px; }
+  .btn-gps { background:#2e86c1; color:white; }
+  .btn-small { background:#eee; padding:6px 10px; font-size:13px; border-radius:6px; }
+  .btn-export { background:#222; color:#fff; }
+  #locStatus { font-size:14px; margin-top:8px; }
+  #preview { max-width:100%; border-radius:8px; margin-top:8px; display:none; }
+  .report { border-bottom:1px solid #eee; padding:10px 0; font-size:14px; }
+  .report:last-child { border:none; }
+  .pill { display:inline-block; background:#eee; border-radius:12px; padding:2px 10px; font-size:12px; margin:2px 4px 2px 0; }
+  .stats { display:flex; gap:12px; text-align:center; margin:12px 0; }
+  .stat { flex:1; background:#fafafa; border:1px solid #eee; border-radius:8px; padding:10px; }
+  .stat b { font-size:22px; display:block; }
+  a.maplink { color:#2e86c1; }
+  footer { text-align:center; color:#888; font-size:13px; padding:20px; }
+  /* EDIT YOUR QUESTIONS HERE - just change the text in the HTML below, keep it to 1-3 questions */
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>#map{height:280px;border-radius:10px;margin-top:10px;display:none;}</style>
+</head>
+<body>
+<header>
+  <div class="badge">FOR ENTOMOLOGISTS • CITIZEN SCIENCE</div>
+  <h1>🔦 Spot-a-Lanternfly</h1>
+  <p>See a spotted lanternfly? Answer 3 quick questions + share location (optional) to help scientists stop them.</p>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Why this helps</h2>
+    <p class="muted">Spotted lanternflies destroy grapes, maples, fruit trees. Entomologists need <b>where + what stage + how many</b> to track spread and remove them. This app makes reporting take &lt; 30 seconds.</p>
+    <div class="stats">
+      <div class="stat"><b id="statTotal">0</b><span class="muted">reports</span></div>
+      <div class="stat"><b id="statToday">0</b><span class="muted">today</span></div>
+      <div class="stat"><b id="statWithGps">0</b><span class="muted">with GPS</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Report a sighting — 3 questions only</h2>
+    <p class="muted">👉 To use your own questions for class, just edit Q1-Q3 text in <code>index.html</code> (marked EDIT HERE).</p>
+    <form id="form">
+      <!-- ===== EDIT HERE: YOUR 1-3 QUESTIONS =====
+           You said you have your own questions - just replace the titles/options below.
+           Keep it to 1-3 questions as required.
+      -->
+      <div class="q">
+        <div class="q-title">Q1. What did you see?</div>
+        <div class="opts" id="q1">
+          <label><input type="radio" name="stage" value="Adult" required><span>🪲 Adult (red wings, spots)</span></label>
+          <label><input type="radio" name="stage" value="Nymph"><span>🐞 Nymph (black/red small)</span></label>
+          <label><input type="radio" name="stage" value="Egg mass"><span>🥚 Egg mass (mud-like patch)</span></label>
+          <label><input type="radio" name="stage" value="Not sure"><span>❓ Not sure</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="q-title">Q2. About how many?</div>
+        <div class="opts">
+          <label><input type="radio" name="count" value="1" required><span>1</span></label>
+          <label><input type="radio" name="count" value="2-10"><span>2–10</span></label>
+          <label><input type="radio" name="count" value="10+"><span>10+</span></label>
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="q-title">Q3. What did you do?</div>
+        <div class="opts">
+          <label><input type="radio" name="action" value="Killed it" required><span>Killed / squashed it</span></label>
+          <label><input type="radio" name="action" value="Photo only"><span>Took photo only</span></label>
+          <label><input type="radio" name="action" value="Just watched"><span>Just watched</span></label>
+        </div>
+      </div>
+      <!-- ===== END EDIT HERE ===== -->
+
+      <div class="q">
+        <div class="q-title">📍 Location (optional, GPS if you want)</div>
+        <div class="row">
+          <button type="button" class="btn-gps" id="gpsBtn">Use my GPS location</button>
+          <button type="button" class="btn-small" id="clearGps">Clear</button>
+        </div>
+        <div id="locStatus" class="muted">No GPS yet — you can still submit with a place name below.</div>
+        <div id="map"></div>
+        <div style="margin-top:8px">
+          <input type="text" id="place" placeholder="Place name (e.g. Central Park, school yard) — optional" />
+        </div>
+      </div>
+
+      <div class="q">
+        <div class="q-title">📸 Photo (optional, helps entomologists confirm)</div>
+        <input type="file" id="photo" accept="image/*" />
+        <img id="preview" alt="preview" />
+      </div>
+
+      <button class="btn-primary" type="submit">Submit report → Help science!</button>
+      <p class="muted" id="msg" style="text-align:center"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Recent sightings (for entomologists)</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn-small btn-export" id="exportBtn">⬇ Export CSV</button>
+      <button class="btn-small" id="clearAll">Delete all (demo)</button>
+    </div>
+    <div id="list"><p class="muted">No reports yet. Be the first!</p></div>
+  </div>
+
+  <div class="card">
+    <h2>How entomologists use this</h2>
+    <p class="muted">1. Map GPS points to find spread → 2. Check life stage (egg vs adult) to time treatment → 3. Count density to prioritize crews. All data stays on device in this demo, CSV export can be emailed to lab.</p>
+  </div>
+</main>
+
+<footer>Demo prototype for class — runs 100% offline except map. Data saved in browser localStorage.</footer>
+
+<script>
+let gps = null;
+let map, marker;
+const form = document.getElementById('form');
+const listEl = document.getElementById('list');
+const locStatus = document.getElementById('locStatus');
+
+document.getElementById('gpsBtn').onclick = () => {
+  if (!navigator.geolocation) { locStatus.textContent = 'GPS not supported on this device.'; return; }
+  locStatus.textContent = 'Getting GPS… allow location access…';
+  navigator.geolocation.getCurrentPosition(pos => {
+    gps = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy) };
+    locStatus.innerHTML = `✅ GPS: ${gps.lat}, ${gps.lng} (±${gps.acc}m) <a class="maplink" target="_blank" href="https://www.google.com/maps?q=${gps.lat},${gps.lng}">View</a>`;
+    showMap();
+  }, err => {
+    locStatus.textContent = 'GPS blocked/failed: ' + err.message + ' — you can still type a place name.';
+  }, { enableHighAccuracy:true, timeout:10000 });
+};
+document.getElementById('clearGps').onclick = () => { gps=null; locStatus.textContent='No GPS yet — you can still submit with a place name below.'; document.getElementById('map').style.display='none'; };
+
+function showMap(){
+  const el = document.getElementById('map');
+  el.style.display='block';
+  if(!map){ map = L.map('map').setView([gps.lat, gps.lng], 14); L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map); }
+  else { map.setView([gps.lat, gps.lng], 14); }
+  if(marker) marker.remove();
+  marker = L.marker([gps.lat, gps.lng]).addTo(map).bindPopup('Lanternfly here').openPopup();
+  setTimeout(()=>map.invalidateSize(),200);
+}
+
+// photo preview
+document.getElementById('photo').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const img = document.getElementById('preview');
+  img.src = URL.createObjectURL(f); img.style.display='block';
+};
+
+function getReports(){ try{ return JSON.parse(localStorage.getItem('lantern_reports')||'[]'); }catch{ return []; } }
+function saveReports(r){ localStorage.setItem('lantern_reports', JSON.stringify(r)); }
+
+form.onsubmit = e => {
+  e.preventDefault();
+  const d = new FormData(form);
+  const rep = {
+    id: Date.now(),
+    date: new Date().toLocaleString(),
+    iso: new Date().toISOString(),
+    stage: d.get('stage'), count: d.get('count'), action: d.get('action'),
+    lat: gps?.lat||'', lng: gps?.lng||'',
+    place: document.getElementById('place').value.trim()
+  };
+  if(!rep.stage||!rep.count||!rep.action){ document.getElementById('msg').textContent='Please answer Q1-Q3.'; return; }
+  const all = getReports(); all.unshift(rep); saveReports(all);
+  document.getElementById('msg').textContent='✅ Thanks! Report saved. Entomologists can see it below.';
+  form.reset(); document.getElementById('preview').style.display='none';
+  render();
+};
+
+function render(){
+  const all = getReports();
+  document.getElementById('statTotal').textContent = all.length;
+  document.getElementById('statToday').textContent = all.filter(r=>r.iso.slice(0,10)===new Date().toISOString().slice(0,10)).length;
+  document.getElementById('statWithGps').textContent = all.filter(r=>r.lat).length;
+  if(!all.length){ listEl.innerHTML='<p class="muted">No reports yet. Be the first!</p>'; return; }
+  listEl.innerHTML = all.map(r=>`
+    <div class="report">
+      <span class="pill">${r.stage}</span><span class="pill">${r.count}</span><span class="pill">${r.action}</span>
+      <br><small class="muted">${r.date}${r.place?' • '+escapeHtml(r.place):''}</small>
+      ${r.lat?`<br><small>📍 ${r.lat}, ${r.lng} <a class="maplink" target="_blank" href="https://www.google.com/maps?q=${r.lat},${r.lng}">map</a></small>`:''}
+      <br><button class="btn-small" onclick="delRep(${r.id})">delete</button>
+    </div>`).join('');
+}
+window.delRep = id => { saveReports(getReports().filter(r=>r.id!==id)); render(); };
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.getElementById('clearAll').onclick = () => { if(confirm('Delete all demo reports?')){ localStorage.removeItem('lantern_reports'); render(); } };
+document.getElementById('exportBtn').onclick = () => {
+  const all = getReports(); if(!all.length){ alert('No data yet'); return; }
+  const csv = 'date,stage,count,action,lat,lng,place\n' + all.map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'lanternfly_reports.csv'; a.click();
+};
+render();
+</script>
+</body>
+</html>
