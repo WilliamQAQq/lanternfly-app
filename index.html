@@ -164,7 +164,7 @@ document.getElementById('gpsBtn').onclick = () => {
   locStatus.textContent = 'Getting GPS… allow location access…';
   navigator.geolocation.getCurrentPosition(pos => {
     gps = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy) };
-    locStatus.innerHTML = `✅ GPS: ${gps.lat}, ${gps.lng} (±${gps.acc}m) <a class="maplink" target="_blank" href="https://www.google.com/maps?q=${gps.lat},${gps.lng}">View</a>`;
+    locStatus.innerHTML = `✅ GPS captured (±${gps.acc}m) — coordinates kept private, only shared with researchers`
     showMap();
   }, err => {
     locStatus.textContent = 'GPS blocked/failed: ' + err.message + ' — you can still type a place name.';
@@ -309,7 +309,7 @@ function render(){
       <span class="pill">${r.stage}</span><span class="pill">${r.count}</span><span class="pill">${r.action}</span>
       ${r.ai ? (r.ai.is_lanternfly ? `<span class="pill" style="background:#d5f5e3;">🤖 AI: lanternfly ${r.ai.confidence??''}%</span>` : `<span class="pill" style="background:#fadbd8;">🤖 AI: not lanternfly</span>`) : ''}
       <br><small class="muted">${r.date}${r.place?' • '+escapeHtml(r.place):''}</small>
-      ${r.lat?`<br><small>📍 ${r.lat}, ${r.lng} <a class="maplink" target="_blank" href="https://www.google.com/maps?q=${r.lat},${r.lng}">map</a></small>`:''}
+      ${r.lat?`<br><small class="muted">📍 Location shared with researchers (exact coords hidden)</small>`:''}
       <br><button class="btn-small" onclick="delRep(${r.id})">delete</button>
     </div>`).join('');
 }
