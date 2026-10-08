@@ -150,7 +150,7 @@
   </div>
 </main>
 
-<footer>Class project — shared cloud DB (Supabase) when configured, otherwise local demo. Judges: check Supabase Table Editor.</footer>
+<footer>Class project — shared cloud DB when configured, otherwise local demo.</footer>
 
 <script>
 let gps = null;
@@ -267,7 +267,7 @@ async function initDB(){
     if (error) throw error;
     useCloud = true;
     cache = (data||[]).map(r => ({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'', ai: r.ai_is_lanternfly==null ? null : { is_lanternfly:r.ai_is_lanternfly, stage:r.ai_stage, confidence:r.ai_confidence, note:r.ai_note } }));
-    dbStatus.textContent = '☁️ Shared cloud DB connected — ' + cache.length + ' reports visible to everyone. Judges: Supabase → Table Editor → lantern_reports';
+    dbStatus.textContent = '☁️ Shared cloud DB connected — ' + cache.length + ' reports visible to everyone.';
   } catch(err) {
     loadLocal();
     dbStatus.textContent = '⚠️ Cloud DB failed (' + err.message + ') — using local mode.';
