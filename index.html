@@ -118,6 +118,15 @@
         <div class="q-title">📸 Photo (optional, helps entomologists confirm)</div>
         <input type="file" id="photo" accept="image/*" />
         <img id="preview" alt="preview" />
+        <div style="margin-top:10px; padding:10px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff;">
+          <div class="q-title">🤖 AI check — is this a lanternfly?</div>
+          <p class="muted" style="margin:4px 0 8px;">Free, optional. Get a key once at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>, paste it (saved only in this browser), then Identify. Key is never uploaded to our database.</p>
+          <input type="password" id="geminiKey" placeholder="Paste Gemini API key (starts with AIza…)" style="margin-bottom:8px;" />
+          <div class="row">
+            <button type="button" class="btn-gps" id="aiBtn">🤖 Identify photo</button>
+          </div>
+          <div id="aiStatus" class="muted" style="margin-top:8px;">No AI check yet.</div>
+        </div>
       </div>
 
       <button class="btn-primary" type="submit">Submit report → Help science!</button>
@@ -178,6 +187,62 @@ document.getElementById('photo').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const img = document.getElementById('preview');
   img.src = URL.createObjectURL(f); img.style.display='block';
+  document.getElementById('aiStatus').textContent = 'Photo ready — press 🤖 Identify photo for AI check (optional).';
+};
+
+// ===== AI identify (Gemini vision, free tier, key stays in browser) =====
+let aiVerdict = null; // {is_lanternfly, stage, confidence, note}
+try { document.getElementById('geminiKey').value = localStorage.getItem('gemini_key')||''; } catch {}
+document.getElementById('geminiKey').onchange = e => { try{ localStorage.setItem('gemini_key', e.target.value.trim()); }catch{} };
+
+function downscaleToJpeg(file, maxSide=768, quality=0.8){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', quality).split(',')[1]);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+document.getElementById('aiBtn').onclick = async () => {
+  const status = document.getElementById('aiStatus');
+  const key = document.getElementById('geminiKey').value.trim();
+  const file = document.getElementById('photo').files[0];
+  if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
+  if (!key) { status.textContent = '⚠️ Paste your free Gemini API key first (aistudio.google.com/apikey).'; return; }
+  status.textContent = '🤖 AI is looking… (sending to Gemini, ~5s)';
+  try {
+    const b64 = await downscaleToJpeg(file);
+    const prompt = 'You are an entomology assistant. Is the insect in this photo a spotted lanternfly (Lycorma delicatula)? Reply with ONLY JSON, no markdown: {"is_lanternfly": true/false, "stage": "Adult" or "Nymph" or "Egg mass" or "Not a lanternfly", "confidence": 0-100, "note": "one short sentence"}';
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ contents:[{ parts:[{ text: prompt }, { inline_data:{ mime_type:'image/jpeg', data:b64 } }] }] })
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error('Gemini HTTP '+res.status+': '+t.slice(0,160)); }
+    const j = await res.json();
+    let txt = j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('') || '';
+    txt = txt.replace(/```json|```/g,'').trim();
+    const v = JSON.parse(txt);
+    aiVerdict = v;
+    status.innerHTML = (v.is_lanternfly?'✅ <b>Likely a lanternfly</b>':'❌ <b>Does not look like a lanternfly</b>')
+      + ' — ' + escapeHtml(v.stage||'') + ' (' + (v.confidence??'?') + '%)<br><span class="muted">' + escapeHtml(v.note||'') + '</span>';
+    // auto-suggest Q1 to save time (user can still change it)
+    const map = { 'Adult':'Adult', 'Nymph':'Nymph', 'Egg mass':'Egg mass' };
+    if (v.is_lanternfly && map[v.stage]) {
+      const radio = document.querySelector('input[name="stage"][value="' + map[v.stage] + '"]');
+      if (radio) { radio.checked = true; status.innerHTML += '<br>👉 Q1 auto-filled as <b>'+map[v.stage]+'</b> — change it if you disagree.'; }
+    }
+  } catch(err) {
+    aiVerdict = null;
+    status.textContent = '⚠️ AI check failed: ' + err.message + ' — you can still submit manually.';
+  }
 };
 
 // ===== Shared cloud DB (Supabase) + local fallback =====
@@ -201,7 +266,7 @@ async function initDB(){
     const { data, error } = await sb.from('lantern_reports').select('*').order('created_at', { ascending:false }).limit(100);
     if (error) throw error;
     useCloud = true;
-    cache = (data||[]).map(r => ({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'' }));
+    cache = (data||[]).map(r => ({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'', ai: r.ai_is_lanternfly==null ? null : { is_lanternfly:r.ai_is_lanternfly, stage:r.ai_stage, confidence:r.ai_confidence, note:r.ai_note } }));
     dbStatus.textContent = '☁️ Shared cloud DB connected — ' + cache.length + ' reports visible to everyone. Judges: Supabase → Table Editor → lantern_reports';
   } catch(err) {
     loadLocal();
@@ -218,16 +283,18 @@ form.onsubmit = async e => {
   if(!stage||!count||!action){ document.getElementById('msg').textContent='Please answer Q1-Q3.'; return; }
   document.getElementById('msg').textContent='Saving…';
   if (useCloud) {
-    const { data, error } = await sb.from('lantern_reports').insert([{ stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null }]).select();
+    const { data, error } = await sb.from('lantern_reports').insert([{ stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null,
+      ai_is_lanternfly: aiVerdict?.is_lanternfly ?? null, ai_stage: aiVerdict?.stage ?? null, ai_confidence: aiVerdict?.confidence ?? null, ai_note: aiVerdict?.note ?? null }]).select();
     if (error) { document.getElementById('msg').textContent='Save failed: '+error.message; return; }
     const r = data[0];
-    cache.unshift({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'' });
+    cache.unshift({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'', ai: aiVerdict });
   } else {
-    const rep = { id: Date.now(), date: new Date().toLocaleString(), iso: new Date().toISOString(), stage, count, action, lat: gps?.lat||'', lng: gps?.lng||'', place };
+    const rep = { id: Date.now(), date: new Date().toLocaleString(), iso: new Date().toISOString(), stage, count, action, lat: gps?.lat||'', lng: gps?.lng||'', place, ai: aiVerdict };
     cache.unshift(rep); saveLocal(cache);
   }
   document.getElementById('msg').textContent='✅ Thanks! Report saved. Everyone can see it below.';
   form.reset(); document.getElementById('preview').style.display='none';
+  aiVerdict = null; document.getElementById('aiStatus').textContent='No AI check yet.';
   render();
 };
 
@@ -240,6 +307,7 @@ function render(){
   listEl.innerHTML = all.map(r=>`
     <div class="report">
       <span class="pill">${r.stage}</span><span class="pill">${r.count}</span><span class="pill">${r.action}</span>
+      ${r.ai ? (r.ai.is_lanternfly ? `<span class="pill" style="background:#d5f5e3;">🤖 AI: lanternfly ${r.ai.confidence??''}%</span>` : `<span class="pill" style="background:#fadbd8;">🤖 AI: not lanternfly</span>`) : ''}
       <br><small class="muted">${r.date}${r.place?' • '+escapeHtml(r.place):''}</small>
       ${r.lat?`<br><small>📍 ${r.lat}, ${r.lng} <a class="maplink" target="_blank" href="https://www.google.com/maps?q=${r.lat},${r.lng}">map</a></small>`:''}
       <br><button class="btn-small" onclick="delRep(${r.id})">delete</button>
@@ -260,7 +328,7 @@ document.getElementById('clearAll').onclick = async () => {
 };
 document.getElementById('exportBtn').onclick = () => {
   const all = getReports(); if(!all.length){ alert('No data yet'); return; }
-  const csv = 'date,stage,count,action,lat,lng,place\n' + getReports().map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
+  const csv = 'date,stage,count,action,lat,lng,place,ai_is_lanternfly,ai_stage,ai_confidence,ai_note\n' + getReports().map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"',r.ai?.is_lanternfly??'',r.ai?.stage??'',r.ai?.confidence??'','"'+(r.ai?.note||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download = 'lanternfly_reports.csv'; a.click();
