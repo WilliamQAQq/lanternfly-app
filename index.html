@@ -269,8 +269,9 @@ form.onsubmit = async e => {
   setMsg('Saving…', 'info');
   try {
     if (useCloud) {
-      const { error } = await sb.from('lantern_reports').insert([{ stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null,
-        ai_is_lanternfly: aiVerdict?.is_lanternfly ?? null, ai_stage: aiVerdict?.stage ?? null, ai_confidence: aiVerdict?.confidence ?? null, ai_note: aiVerdict?.note ?? null }]).select();
+      const payload = { stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null };
+      if (aiVerdict) { payload.ai_is_lanternfly = aiVerdict.is_lanternfly; payload.ai_stage = aiVerdict.stage; payload.ai_confidence = aiVerdict.confidence; payload.ai_note = aiVerdict.note; }
+      const { error } = await sb.from('lantern_reports').insert([payload]).select();
       if (error) throw new Error(error.message);
     } else {
       saveLocal(cache);
