@@ -58,11 +58,6 @@
   <div class="card">
     <h2>Why this helps</h2>
     <p class="muted">Spotted lanternflies destroy grapes, maples, fruit trees. Entomologists need <b>where + what stage + how many</b> to track spread and remove them. This app makes reporting take &lt; 30 seconds.</p>
-    <div class="stats">
-      <div class="stat"><b id="statTotal">0</b><span class="muted">reports</span></div>
-      <div class="stat"><b id="statToday">0</b><span class="muted">today</span></div>
-      <div class="stat"><b id="statWithGps">0</b><span class="muted">with GPS</span></div>
-    </div>
   </div>
 
   <div class="card">
@@ -134,20 +129,6 @@
     </form>
   </div>
 
-  <div class="card">
-    <h2>Recent sightings (for entomologists)</h2>
-    <p class="muted" id="dbStatus">🔄 Connecting…</p>
-    <div class="row" style="margin-bottom:10px">
-      <button class="btn-small btn-export" id="exportBtn">⬇ Export CSV</button>
-      <button class="btn-small" id="clearAll">Delete all (demo)</button>
-    </div>
-    <div id="list"><p class="muted">No reports yet. Be the first!</p></div>
-  </div>
-
-  <div class="card">
-    <h2>How entomologists use this</h2>
-    <p class="muted">1. Map GPS points to find spread → 2. Check life stage (egg vs adult) to time treatment → 3. Count density to prioritize crews. All data stays on device in this demo, CSV export can be emailed to lab.</p>
-  </div>
 </main>
 
 <footer>Class project — shared cloud DB when configured, otherwise local demo.</footer>
@@ -156,7 +137,6 @@
 let gps = null;
 let map, marker;
 const form = document.getElementById('form');
-const listEl = document.getElementById('list');
 const locStatus = document.getElementById('locStatus');
 
 document.getElementById('gpsBtn').onclick = () => {
@@ -253,26 +233,21 @@ document.getElementById('aiBtn').onclick = async () => {
 const SUPABASE_URL = 'https://jhftlemkgeocnhnvbafz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KMKic67K9tx7TGTPmhHXyg_D7dn6CIq';
 let useCloud = false, sb = null, cache = [];
-const dbStatus = document.getElementById('dbStatus');
 
 function getReports(){ return cache; }
 function saveLocal(r){ try{ localStorage.setItem('lantern_reports', JSON.stringify(r)); }catch{} }
 function loadLocal(){ try{ cache = JSON.parse(localStorage.getItem('lantern_reports')||'[]'); }catch{ cache = []; } }
 
 async function initDB(){
-  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) { loadLocal(); dbStatus.textContent = '📱 Local demo mode — set SUPABASE_URL/KEY in index.html to enable shared cloud DB.'; render(); return; }
+  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) { loadLocal(); return; }
   try {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data, error } = await sb.from('lantern_reports').select('*').order('created_at', { ascending:false }).limit(100);
+    const { error } = await sb.from('lantern_reports').select('id', { count:'exact', head:true });
     if (error) throw error;
     useCloud = true;
-    cache = (data||[]).map(r => ({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'', ai: r.ai_is_lanternfly==null ? null : { is_lanternfly:r.ai_is_lanternfly, stage:r.ai_stage, confidence:r.ai_confidence, note:r.ai_note } }));
-    dbStatus.textContent = '☁️ Shared cloud DB connected — ' + cache.length + ' reports visible to everyone.';
   } catch(err) {
     loadLocal();
-    dbStatus.textContent = '⚠️ Cloud DB failed (' + err.message + ') — using local mode.';
   }
-  render();
 }
 
 form.onsubmit = async e => {
@@ -286,53 +261,16 @@ form.onsubmit = async e => {
     const { data, error } = await sb.from('lantern_reports').insert([{ stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null,
       ai_is_lanternfly: aiVerdict?.is_lanternfly ?? null, ai_stage: aiVerdict?.stage ?? null, ai_confidence: aiVerdict?.confidence ?? null, ai_note: aiVerdict?.note ?? null }]).select();
     if (error) { document.getElementById('msg').textContent='Save failed: '+error.message; return; }
-    const r = data[0];
-    cache.unshift({ id:r.id, date:new Date(r.created_at).toLocaleString(), iso:r.created_at, stage:r.stage, count:r.count, action:r.action, lat:r.lat||'', lng:r.lng||'', place:r.place||'', ai: aiVerdict });
   } else {
-    const rep = { id: Date.now(), date: new Date().toLocaleString(), iso: new Date().toISOString(), stage, count, action, lat: gps?.lat||'', lng: gps?.lng||'', place, ai: aiVerdict };
-    cache.unshift(rep); saveLocal(cache);
+    saveLocal(cache);
   }
-  document.getElementById('msg').textContent='✅ Thanks! Report saved. Everyone can see it below.';
+  document.getElementById('msg').textContent='✅ Thanks! Report saved. Entomologists can see it.';
   form.reset(); document.getElementById('preview').style.display='none';
   aiVerdict = null; document.getElementById('aiStatus').textContent='No AI check yet.';
-  render();
 };
 
-function render(){
-  const all = getReports();
-  document.getElementById('statTotal').textContent = all.length;
-  document.getElementById('statToday').textContent = all.filter(r=>r.iso.slice(0,10)===new Date().toISOString().slice(0,10)).length;
-  document.getElementById('statWithGps').textContent = all.filter(r=>r.lat).length;
-  if(!all.length){ listEl.innerHTML='<p class="muted">No reports yet. Be the first!</p>'; return; }
-  listEl.innerHTML = all.map(r=>`
-    <div class="report">
-      <span class="pill">${r.stage}</span><span class="pill">${r.count}</span><span class="pill">${r.action}</span>
-      ${r.ai ? (r.ai.is_lanternfly ? `<span class="pill" style="background:#d5f5e3;">🤖 AI: lanternfly ${r.ai.confidence??''}%</span>` : `<span class="pill" style="background:#fadbd8;">🤖 AI: not lanternfly</span>`) : ''}
-      <br><small class="muted">${r.date}${r.place?' • '+escapeHtml(r.place):''}</small>
-      ${r.lat?`<br><small class="muted">📍 Location shared with researchers (exact coords hidden)</small>`:''}
-      <br><button class="btn-small" onclick="delRep(${r.id})">delete</button>
-    </div>`).join('');
-}
-window.delRep = async id => {
-  if (useCloud) { const { error } = await sb.from('lantern_reports').delete().eq('id', id); if (error) { alert('Delete failed: '+error.message); return; } cache = cache.filter(r=>r.id!==id); }
-  else { cache = cache.filter(r=>r.id!==id); saveLocal(cache); }
-  render();
-};
 function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-document.getElementById('clearAll').onclick = async () => {
-  if(!confirm('Delete all reports? (cloud: deletes shared data!)')) return;
-  if (useCloud) { await sb.from('lantern_reports').delete().neq('id', 0); const { data } = await sb.from('lantern_reports').select('*').order('created_at',{ascending:false}).limit(100); cache = []; }
-  else { localStorage.removeItem('lantern_reports'); cache = []; }
-  render();
-};
-document.getElementById('exportBtn').onclick = () => {
-  const all = getReports(); if(!all.length){ alert('No data yet'); return; }
-  const csv = 'date,stage,count,action,lat,lng,place,ai_is_lanternfly,ai_stage,ai_confidence,ai_note\n' + getReports().map(r=>[r.date,r.stage,r.count,r.action,r.lat,r.lng,'"'+(r.place||'').replace(/"/g,'""')+'"',r.ai?.is_lanternfly??'',r.ai?.stage??'',r.ai?.confidence??'','"'+(r.ai?.note||'').replace(/"/g,'""')+'"'].join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-  a.download = 'lanternfly_reports.csv'; a.click();
-};
 initDB();
 </script>
 </body>
