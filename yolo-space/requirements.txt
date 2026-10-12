@@ -1,0 +1,4 @@
+ultralytics
+gradio>=4.0
+numpy
+pillow
