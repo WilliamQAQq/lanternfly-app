@@ -291,15 +291,17 @@ async function yoloInfer(img){
   }
   const tensor = new ort.Tensor('float32', input, [1,3,YOLO_INPUT,YOLO_INPUT]);
   const out = await session.run({ images: tensor });
-  const preds = out.output0.data; // [1,5,8400]
+  const preds = out.output0.data; // flattened [1,5,8400] CHANNEL-major: index = channel*8400 + anchor
   const n = preds.length/5;
   let boxes = [];
   for (let i=0;i<n;i++){
-    const conf = preds[i*5+4];
+    const conf = preds[4*n+i];
     if (conf < YOLO_CONF) continue;
-    const cx = preds[i*5]*scale; const cy = preds[i*5+1]*scale;
-    const w = preds[i*5+2]*scale; const h = preds[i*5+3]*scale;
-    boxes.push({ x:(cx-dx)-w/2, y:(cy-dy)-h/2, w, h, conf });
+    const cx = (preds[0*n+i]-dx)/scale;
+    const cy = (preds[1*n+i]-dy)/scale;
+    const w = preds[2*n+i]/scale;
+    const h = preds[3*n+i]/scale;
+    boxes.push({ x:cx-w/2, y:cy-h/2, w, h, conf });
   }
   return nms(boxes);
 }
