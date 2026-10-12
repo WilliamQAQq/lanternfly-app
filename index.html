@@ -117,6 +117,15 @@
         <div class="q-title">📸 Photo (optional, helps entomologists confirm)</div>
         <input type="file" id="photo" accept="image/*" />
         <img id="preview" alt="preview" />
+        <canvas id="yoloCanvas" style="display:none; max-width:100%; border-radius:8px; margin-top:8px;"></canvas>
+        <div style="margin-top:10px; padding:10px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff;">
+          <div class="q-title">🔎 YOLO detector — circles lanternflies + probability</div>
+          <p class="muted" style="margin:4px 0 8px;">Uses a YOLOv8n model trained on spotted lanternfly photos (Roboflow hosted inference). No API key needed.</p>
+          <div class="row">
+            <button type="button" class="btn-gps" id="yoloBtn">🔎 Detect lanternflies</button>
+          </div>
+          <div id="yoloStatus" class="muted" style="margin-top:8px;">No detection yet.</div>
+        </div>
         <div style="margin-top:10px; padding:10px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff;">
           <div class="q-title">🤖 AI check — is this a lanternfly?</div>
           <p class="muted" style="margin:4px 0 8px;">Free, optional. Get a key once at <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a>, paste it (saved only in this browser), then Identify. Key is never uploaded to our database.</p>
@@ -170,7 +179,12 @@ function showMap(){
 document.getElementById('photo').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const img = document.getElementById('preview');
+  img.onload = () => {
+    const c = document.getElementById('yoloCanvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+  };
   img.src = URL.createObjectURL(f); img.style.display='block';
+  document.getElementById('yoloStatus').textContent = 'No detection yet.';
   document.getElementById('aiStatus').textContent = 'Photo ready — press 🤖 Identify photo for AI check (optional).';
 };
 
@@ -229,6 +243,69 @@ document.getElementById('aiBtn').onclick = async () => {
   }
 };
 
+// ===== YOLO detector (Roboflow hosted inference) =====
+// Roboflow serverless API: POST image -> {predictions:[{class,confidence,x,y,width,height}]}
+const ROBOFLOW_PUBLISHABLE_KEY = 'rf_sEL1XUeR1qatWYEWTipAFu12yaq2';
+const ROBOFLOW_MODEL_ID = 'spotted-lanternfly-annotated-set-awhtg/1';
+let yoloVerdict = null; // {is_lanternfly, confidence}
+
+async function yoloDetect(file){
+  const formData = new FormData();
+  formData.append('file', file);
+  const url = 'https://serverless.roboflow.com/' + ROBOFLOW_MODEL_ID + '?confidence=0.25';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + ROBOFLOW_PUBLISHABLE_KEY },
+    body: formData
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ': ' + t.slice(0,150)); }
+  return await res.json();
+}
+
+document.getElementById('yoloBtn').onclick = async () => {
+  const status = document.getElementById('yoloStatus');
+  const file = document.getElementById('photo').files[0];
+  if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
+  status.textContent = '🔎 Running YOLO detection… (may take a few seconds)';
+  try {
+    const data = await yoloDetect(file);
+    const preds = data.predictions || [];
+    if (!preds.length) {
+      yoloVerdict = { is_lanternfly:false, confidence:0 };
+      status.innerHTML = '❌ <b>No lanternfly detected</b> — try another photo.';
+      return;
+    }
+    // merge overlapping classes (Adult/Early Nymph/Late Nymph) -> lanternfly
+    const best = preds.reduce((a,b)=>a.confidence>b.confidence?a:b);
+    yoloVerdict = { is_lanternfly:true, confidence: best.confidence, class: best.class };
+    status.innerHTML = '✅ <b>Lanternfly detected</b> — ' + escapeHtml(best.class) + ' (' + (best.confidence*100).toFixed(1) + '%)<br>'
+      + '🔢 ' + preds.length + ' box(es) found. Submitting will store the AI result.';
+    // draw boxes on preview
+    drawBoxes(preds, data.image && data.image.width, data.image && data.image.height);
+  } catch(err) {
+    yoloVerdict = null;
+    status.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
+  }
+};
+
+function drawBoxes(preds, iw, ih){
+  const img = document.getElementById('preview');
+  if (!img || !img.src) return;
+  const c = document.getElementById('yoloCanvas');
+  c.style.display = 'block';
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  const imgW = img.naturalWidth, imgH = img.naturalHeight;
+  const scaleX = c.width / imgW, scaleY = c.height / imgH;
+  ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3;
+  ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ff3b30';
+  preds.forEach(p=>{
+    const x = (p.x - p.width/2)*scaleX, y = (p.y - p.height/2)*scaleY, w = p.width*scaleX, h = p.height*scaleY;
+    ctx.strokeRect(x,y,w,h);
+    ctx.fillText((p.confidence*100).toFixed(0)+'%', x, y>18?y-6:y+18);
+  });
+}
+
 // ===== Shared cloud DB (Supabase) + local fallback =====
 // 1. Create free project at https://supabase.com -> get URL + anon key
 // 2. Run supabase-schema.sql in SQL Editor
@@ -271,6 +348,7 @@ form.onsubmit = async e => {
     if (useCloud) {
       const payload = { stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null };
       if (aiVerdict) { payload.ai_is_lanternfly = aiVerdict.is_lanternfly; payload.ai_stage = aiVerdict.stage; payload.ai_confidence = aiVerdict.confidence; payload.ai_note = aiVerdict.note; }
+      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.class; payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv8n detector'; }
       const { error } = await sb.from('lantern_reports').insert([payload]).select();
       if (error) throw new Error(error.message);
     } else {
@@ -278,7 +356,9 @@ form.onsubmit = async e => {
     }
     setMsg('✅ Report submitted successfully! Thanks for helping science.', 'success');
     form.reset(); document.getElementById('preview').style.display='none';
+    document.getElementById('yoloCanvas').style.display='none';
     aiVerdict = null; document.getElementById('aiStatus').textContent='No AI check yet.';
+    yoloVerdict = null; document.getElementById('yoloStatus').textContent='No detection yet.';
   } catch(err) {
     setMsg('❌ Submit failed: ' + err.message + ' — please check your network and try again.', 'error');
   }
