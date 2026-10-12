@@ -49,6 +49,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 <style>#map{height:280px;border-radius:10px;margin-top:10px;display:none;}</style>
 </head>
 <body>
@@ -120,7 +121,7 @@
         <canvas id="yoloCanvas" style="display:none; max-width:100%; border-radius:8px; margin-top:8px;"></canvas>
         <div style="margin-top:10px; padding:10px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff;">
           <div class="q-title">🔎 YOLO detector — circles lanternflies + probability</div>
-          <p class="muted" style="margin:4px 0 8px;">Uses a YOLOv8n model trained on spotted lanternfly photos (Roboflow hosted inference). No API key needed.</p>
+          <p class="muted" style="margin:4px 0 8px;">Runs a YOLOv11-Nano model locally in your browser (onnxruntime-web). No server, no API key, photo never leaves your device.</p>
           <div class="row">
             <button type="button" class="btn-gps" id="yoloBtn">🔎 Detect lanternflies</button>
           </div>
@@ -243,66 +244,114 @@ document.getElementById('aiBtn').onclick = async () => {
   }
 };
 
-// ===== YOLO detector (Roboflow hosted inference) =====
-// Roboflow serverless API: POST image -> {predictions:[{class,confidence,x,y,width,height}]}
-const ROBOFLOW_PUBLISHABLE_KEY = 'rf_sEL1XUeR1qatWYEWTipAFu12yaq2';
-const ROBOFLOW_MODEL_ID = 'spotted-lanternfly-annotated-set-awhtg/1';
-let yoloVerdict = null; // {is_lanternfly, confidence}
+// ===== YOLO detector — runs locally in browser (onnxruntime-web) =====
+// Model: models/best.onnx (YOLOv11-Nano trained locally, single class "lanternfly")
+// Output: [1, 5, 8400] = (cx, cy, w, h, conf) per anchor
+const YOLO_MODEL_URL = 'models/best.onnx';
+const YOLO_INPUT = 640;
+const YOLO_CONF = 0.35;
+let yoloSession = null;
+let yoloVerdict = null; // {is_lanternfly, confidence, count}
 
-async function yoloDetect(file){
-  const formData = new FormData();
-  formData.append('file', file);
-  const url = 'https://serverless.roboflow.com/' + ROBOFLOW_MODEL_ID + '?confidence=0.25';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + ROBOFLOW_PUBLISHABLE_KEY },
-    body: formData
-  });
-  if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ': ' + t.slice(0,150)); }
-  return await res.json();
+async function loadYoloSession(){
+  if (yoloSession) return yoloSession;
+  const ep = (window.ort && window.ort.env && window.ort.env.webgpu && await ort.env.webgpu.isAvailable()) ? 'webgpu' : 'wasm';
+  yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: [ep] });
+  return yoloSession;
+}
+
+function letterbox(img, size){
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const s = Math.min(size/img.width, size/img.height);
+  const nw = img.width*s, nh = img.height*s;
+  ctx.fillStyle = '#114'; ctx.fillRect(0,0,size,size);
+  ctx.drawImage(img, (size-nw)/2, (size-nh)/2, nw, nh);
+  return { canvas, scale: s, dx: (size-nw)/2, dy: (size-nh)/2 };
+}
+
+async function yoloInfer(img){
+  const session = await loadYoloSession();
+  const { canvas, scale, dx, dy } = letterbox(img, YOLO_INPUT);
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.getImageData(0,0,YOLO_INPUT,YOLO_INPUT);
+  const data = imageData.data;
+  const input = new Float32Array(3*YOLO_INPUT*YOLO_INPUT);
+  for (let i=0,p=0;i<data.length;i+=4,p++){
+    input[p] = data[i]/255.0;
+    input[YOLO_INPUT*YOLO_INPUT + p] = data[i+1]/255.0;
+    input[2*YOLO_INPUT*YOLO_INPUT + p] = data[i+2]/255.0;
+  }
+  const tensor = new ort.Tensor('float32', input, [1,3,YOLO_INPUT,YOLO_INPUT]);
+  const out = await session.run({ images: tensor });
+  const preds = out.output0.data; // [1,5,8400]
+  const n = preds.length/5;
+  let boxes = [];
+  for (let i=0;i<n;i++){
+    const conf = preds[i*5+4];
+    if (conf < YOLO_CONF) continue;
+    const cx = preds[i*5]*scale; const cy = preds[i*5+1]*scale;
+    const w = preds[i*5+2]*scale; const h = preds[i*5+3]*scale;
+    boxes.push({ x:(cx-dx)-w/2, y:(cy-dy)-h/2, w, h, conf });
+  }
+  return nms(boxes);
+}
+
+function nms(boxes, iouThr=0.45){
+  boxes.sort((a,b)=>b.conf-a.conf);
+  const keep = [];
+  while (boxes.length){
+    const a = boxes.shift(); keep.push(a);
+    boxes = boxes.filter(b=>{
+      const ix = Math.max(a.x,b.x), iy = Math.max(a.y,b.y);
+      const iw = Math.min(a.x+a.w,b.x+b.w)-ix, ih = Math.min(a.y+a.h,b.y+b.h)-iy;
+      if (iw<=0||ih<=0) return true;
+      const inter = iw*ih, uni = a.w*a.h + b.w*b.h - inter;
+      return (inter/uni) <= iouThr;
+    });
+  }
+  return keep;
 }
 
 document.getElementById('yoloBtn').onclick = async () => {
   const status = document.getElementById('yoloStatus');
   const file = document.getElementById('photo').files[0];
   if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
-  status.textContent = '🔎 Running YOLO detection… (may take a few seconds)';
+  status.textContent = '⏳ Loading YOLO model (first run ~10s) + detecting…';
   try {
-    const data = await yoloDetect(file);
-    const preds = data.predictions || [];
-    if (!preds.length) {
-      yoloVerdict = { is_lanternfly:false, confidence:0 };
-      status.innerHTML = '❌ <b>No lanternfly detected</b> — try another photo.';
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; });
+    const boxes = await yoloInfer(img);
+    if (!boxes.length) {
+      yoloVerdict = { is_lanternfly:false, confidence:0, count:0 };
+      status.innerHTML = '❌ <b>No lanternfly detected</b> (conf < ' + (YOLO_CONF*100) + '%) — try another photo.';
       return;
     }
-    // merge overlapping classes (Adult/Early Nymph/Late Nymph) -> lanternfly
-    const best = preds.reduce((a,b)=>a.confidence>b.confidence?a:b);
-    yoloVerdict = { is_lanternfly:true, confidence: best.confidence, class: best.class };
-    status.innerHTML = '✅ <b>Lanternfly detected</b> — ' + escapeHtml(best.class) + ' (' + (best.confidence*100).toFixed(1) + '%)<br>'
-      + '🔢 ' + preds.length + ' box(es) found. Submitting will store the AI result.';
-    // draw boxes on preview
-    drawBoxes(preds, data.image && data.image.width, data.image && data.image.height);
+    const best = boxes[0];
+    yoloVerdict = { is_lanternfly:true, confidence: best.conf, count: boxes.length };
+    status.innerHTML = '✅ <b>Lanternfly detected</b> — confidence ' + (best.conf*100).toFixed(1) + '%<br>'
+      + '🔢 ' + boxes.length + ' box(es) found. Submit to store the result.';
+    drawBoxes(boxes);
   } catch(err) {
     yoloVerdict = null;
     status.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
   }
 };
 
-function drawBoxes(preds, iw, ih){
+function drawBoxes(boxes){
   const img = document.getElementById('preview');
-  if (!img || !img.src) return;
   const c = document.getElementById('yoloCanvas');
+  if (!img || !img.src) return;
   c.style.display = 'block';
   const ctx = c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
-  const imgW = img.naturalWidth, imgH = img.naturalHeight;
-  const scaleX = c.width / imgW, scaleY = c.height / imgH;
   ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3;
   ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ff3b30';
-  preds.forEach(p=>{
-    const x = (p.x - p.width/2)*scaleX, y = (p.y - p.height/2)*scaleY, w = p.width*scaleX, h = p.height*scaleY;
-    ctx.strokeRect(x,y,w,h);
-    ctx.fillText((p.confidence*100).toFixed(0)+'%', x, y>18?y-6:y+18);
+  boxes.forEach(b=>{
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.fillText((b.conf*100).toFixed(0)+'%', b.x, b.y>18?b.y-6:b.y+18);
   });
 }
 
@@ -348,7 +397,7 @@ form.onsubmit = async e => {
     if (useCloud) {
       const payload = { stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null };
       if (aiVerdict) { payload.ai_is_lanternfly = aiVerdict.is_lanternfly; payload.ai_stage = aiVerdict.stage; payload.ai_confidence = aiVerdict.confidence; payload.ai_note = aiVerdict.note; }
-      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.class; payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv8n detector'; }
+      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.count ? ('lanternfly x'+yoloVerdict.count) : 'lanternfly'; payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv11-Nano browser'; }
       const { error } = await sb.from('lantern_reports').insert([payload]).select();
       if (error) throw new Error(error.message);
     } else {
