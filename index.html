@@ -245,13 +245,14 @@ document.getElementById('aiBtn').onclick = async () => {
 };
 
 // ===== YOLO detector — runs locally in browser (onnxruntime-web) =====
-// Model: models/best.onnx (YOLOv11-Nano trained locally, single class "lanternfly")
-// Output: [1, 5, 8400] = (cx, cy, w, h, conf) per anchor
+// Model: models/best.onnx — YOLOv8n fine-tuned on 3.4k real annotated lanternfly photos (Roboflow)
+// Classes: 0=Adult, 1=Early Nymph, 2=Late Nymph. Output: [1, 7, 8400] = (cx,cy,w,h, cls0,cls1,cls2)
 const YOLO_MODEL_URL = 'models/best.onnx';
 const YOLO_INPUT = 640;
-const YOLO_CONF = 0.35;
+const YOLO_CONF = 0.4;
+const YOLO_CLASSES = ['Adult Spotted Lanternfly', 'Early Nymph Spotted Lanternfly', 'Late Nymph Spotted Lanternfly'];
 let yoloSession = null;
-let yoloVerdict = null; // {is_lanternfly, confidence, count}
+let yoloVerdict = null; // {is_lanternfly, confidence, stage, count}
 
 async function loadYoloSession(){
   if (yoloSession) return yoloSession;
@@ -291,17 +292,18 @@ async function yoloInfer(img){
   }
   const tensor = new ort.Tensor('float32', input, [1,3,YOLO_INPUT,YOLO_INPUT]);
   const out = await session.run({ images: tensor });
-  const preds = out.output0.data; // flattened [1,5,8400] CHANNEL-major: index = channel*8400 + anchor
-  const n = preds.length/5;
+  const preds = out.output0.data; // flattened [1,7,8400] CHANNEL-major: index = channel*8400 + anchor
+  const n = preds.length/7;
   let boxes = [];
   for (let i=0;i<n;i++){
-    const conf = preds[4*n+i];
+    let cls = 0, conf = -1;
+    for (let c=0;c<3;c++){ const s = preds[(4+c)*n+i]; if (s>conf){ conf=s; cls=c; } }
     if (conf < YOLO_CONF) continue;
     const cx = (preds[0*n+i]-dx)/scale;
     const cy = (preds[1*n+i]-dy)/scale;
     const w = preds[2*n+i]/scale;
     const h = preds[3*n+i]/scale;
-    boxes.push({ x:cx-w/2, y:cy-h/2, w, h, conf });
+    boxes.push({ x:cx-w/2, y:cy-h/2, w, h, conf, cls });
   }
   return nms(boxes);
 }
@@ -333,15 +335,23 @@ document.getElementById('yoloBtn').onclick = async () => {
     await new Promise((res,rej)=>{ img.onload=res; img.onerror=rej; });
     const boxes = await yoloInfer(img);
     if (!boxes.length) {
-      yoloVerdict = { is_lanternfly:false, confidence:0, count:0 };
+      yoloVerdict = { is_lanternfly:false, confidence:0, stage:null, count:0 };
       status.innerHTML = '❌ <b>No lanternfly detected</b> (conf < ' + (YOLO_CONF*100) + '%) — try another photo.';
       return;
     }
     const best = boxes[0];
-    yoloVerdict = { is_lanternfly:true, confidence: best.conf, count: boxes.length };
-    status.innerHTML = '✅ <b>Lanternfly detected</b> — confidence ' + (best.conf*100).toFixed(1) + '%<br>'
+    const stage = YOLO_CLASSES[best.cls];
+    yoloVerdict = { is_lanternfly:true, confidence: best.conf, stage, count: boxes.length };
+    status.innerHTML = '✅ <b>Lanternfly detected</b> — ' + escapeHtml(stage) + ' (' + (best.conf*100).toFixed(1) + '%)<br>'
       + '🔢 ' + boxes.length + ' box(es) found. Submit to store the result.';
     drawBoxes(boxes);
+    // auto-suggest Q1 based on detected stage (user can still change it)
+    const stageMap = { 'Adult Spotted Lanternfly':'Adult', 'Early Nymph Spotted Lanternfly':'Nymph', 'Late Nymph Spotted Lanternfly':'Nymph' };
+    const q1val = stageMap[stage];
+    if (q1val) {
+      const radio = document.querySelector('input[name="stage"][value="' + q1val + '"]');
+      if (radio) { radio.checked = true; status.innerHTML += '<br>👉 Q1 auto-filled as <b>' + q1val + '</b> — change it if you disagree.'; }
+    }
   } catch(err) {
     yoloVerdict = null;
     status.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
@@ -359,7 +369,8 @@ function drawBoxes(boxes){
   ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ff3b30';
   boxes.forEach(b=>{
     ctx.strokeRect(b.x, b.y, b.w, b.h);
-    ctx.fillText((b.conf*100).toFixed(0)+'%', b.x, b.y>18?b.y-6:b.y+18);
+    const label = (b.conf*100).toFixed(0) + '% ' + YOLO_CLASSES[b.cls].replace(' Spotted Lanternfly','');
+    ctx.fillText(label, b.x, b.y>18?b.y-6:b.y+18);
   });
 }
 
@@ -405,7 +416,7 @@ form.onsubmit = async e => {
     if (useCloud) {
       const payload = { stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null };
       if (aiVerdict) { payload.ai_is_lanternfly = aiVerdict.is_lanternfly; payload.ai_stage = aiVerdict.stage; payload.ai_confidence = aiVerdict.confidence; payload.ai_note = aiVerdict.note; }
-      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.count ? ('lanternfly x'+yoloVerdict.count) : 'lanternfly'; payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv11-Nano browser'; }
+      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.stage || (yoloVerdict.count ? 'lanternfly x'+yoloVerdict.count : null); payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv8n browser (Roboflow-trained)'; }
       const { error } = await sb.from('lantern_reports').insert([payload]).select();
       if (error) throw new Error(error.message);
     } else {
