@@ -249,7 +249,7 @@ document.getElementById('aiBtn').onclick = async () => {
 // Classes: 0=Adult, 1=Early Nymph, 2=Late Nymph. Output: [1, 7, 8400] = (cx,cy,w,h, cls0,cls1,cls2)
 const YOLO_MODEL_URL = 'models/best.onnx';
 const YOLO_INPUT = 640;
-const YOLO_CONF = 0.6;
+const YOLO_CONF = 0.7;
 const YOLO_CLASSES = ['Adult Spotted Lanternfly', 'Early Nymph Spotted Lanternfly', 'Late Nymph Spotted Lanternfly'];
 let yoloSession = null;
 let yoloVerdict = null; // {is_lanternfly, confidence, stage, count}
