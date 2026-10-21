@@ -19,13 +19,15 @@
   .q { margin:16px 0; padding:12px; background:#fafafa; border-radius:8px; border:1px solid #eee; }
   .q-title { font-weight:700; margin-bottom:8px; }
   .opts { display:flex; flex-wrap:wrap; gap:8px; }
-  .opts label { border:2px solid #ddd; border-radius:20px; padding:8px 14px; cursor:pointer; font-size:14px; user-select:none; }
-  .opts input { display:none; }
+  .opts label { border:2px solid #ddd; border-radius:20px; padding:8px 14px; cursor:pointer; font-size:14px; user-select:none; position:relative; }
+  .opts input { position:absolute; opacity:0; pointer-events:none; }
   .opts input:checked + span { font-weight:700; }
+  .opts input:focus-visible + span { outline:2px solid var(--green); outline-offset:2px; border-radius:12px; }
   .opts label:has(input:checked) { border-color:var(--green); background:#eafaf1; }
   .row { display:flex; gap:8px; flex-wrap:wrap; }
-  input[type=text], input[type=datetime-local] { width:100%; padding:10px 12px; border:1px solid #ccc; border-radius:8px; font-size:15px; }
+  input[type=text], input[type=password], input[type=datetime-local] { width:100%; padding:10px 12px; border:1px solid #ccc; border-radius:8px; font-size:15px; }
   button { cursor:pointer; border:none; border-radius:8px; padding:12px 18px; font-size:15px; font-weight:700; }
+  button:disabled { opacity:.55; cursor:not-allowed; }
   .btn-primary { background:var(--green); color:white; width:100%; margin-top:12px; }
   .btn-gps { background:#2e86c1; color:white; }
   .btn-small { background:#eee; padding:6px 10px; font-size:13px; border-radius:6px; }
@@ -67,7 +69,7 @@
 
   <div class="card">
     <h2>Report a sighting</h2>
-    <form id="form">
+    <form id="form" autocomplete="off">
       <!-- ===== EDIT HERE: YOUR 1-3 QUESTIONS =====
            You said you have your own questions - just replace the titles/options below.
            Keep it to 1-3 questions as required.
@@ -121,7 +123,7 @@
         <canvas id="yoloCanvas" style="display:none; max-width:100%; border-radius:8px; margin-top:8px;"></canvas>
         <div style="margin-top:10px; padding:10px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff;">
           <div class="q-title">🔎 YOLO detector — circles lanternflies + probability</div>
-          <p class="muted" style="margin:4px 0 8px;">Runs a YOLOv11-Nano model locally in your browser (onnxruntime-web). No server, no API key, photo never leaves your device.</p>
+          <p class="muted" style="margin:4px 0 8px;">Runs a fine-tuned YOLO nano model locally in your browser (onnxruntime-web). No server, no API key, photo never leaves your device.</p>
           <div class="row">
             <button type="button" class="btn-gps" id="yoloBtn">🔎 Detect lanternflies</button>
           </div>
@@ -145,7 +147,7 @@
 
 </main>
 
-<footer>Class project — shared cloud DB when configured, otherwise local demo.<br>Project repo: <a href="https://github.com/WilliamQAQq/lanternfly-app" target="_blank">github.com/WilliamQAQq/lanternfly-app</a></footer>
+<footer>Class project — reports go to a shared cloud database for entomologists.<br><span id="dbStatus" class="muted">⏳ Checking connection…</span><br>Project repo: <a href="https://github.com/WilliamQAQq/lanternfly-app" target="_blank">github.com/WilliamQAQq/lanternfly-app</a></footer>
 
 <script>
 let gps = null;
@@ -177,14 +179,18 @@ function showMap(){
 }
 
 // photo preview
+let photoURL = null;
 document.getElementById('photo').onchange = e => {
   const f = e.target.files[0]; if(!f) return;
+  if (photoURL) URL.revokeObjectURL(photoURL);
+  photoURL = URL.createObjectURL(f);
   const img = document.getElementById('preview');
+  const c = document.getElementById('yoloCanvas');
   img.onload = () => {
-    const c = document.getElementById('yoloCanvas');
     c.width = img.naturalWidth; c.height = img.naturalHeight;
   };
-  img.src = URL.createObjectURL(f); img.style.display='block';
+  img.src = photoURL; img.style.display='block';
+  c.style.display='none';
   document.getElementById('yoloStatus').textContent = 'No detection yet.';
   document.getElementById('aiStatus').textContent = 'Photo ready — press 🤖 Identify photo for AI check (optional).';
 };
@@ -212,10 +218,12 @@ function downscaleToJpeg(file, maxSide=768, quality=0.8){
 
 document.getElementById('aiBtn').onclick = async () => {
   const status = document.getElementById('aiStatus');
-  const key = document.getElementById('geminiKey').value.trim();
+  const btn = document.getElementById('aiBtn');
+  const key = document.getElementById('geminiKey').value.trim() || (function(){ try{ return (localStorage.getItem('gemini_key')||'').trim(); }catch{ return ''; } })();
   const file = document.getElementById('photo').files[0];
   if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
   if (!key) { status.textContent = '⚠️ Paste your free Gemini API key first (aistudio.google.com/apikey).'; return; }
+  btn.disabled = true;
   status.textContent = '🤖 AI is looking… (sending to Gemini, ~5s)';
   try {
     const b64 = await downscaleToJpeg(file);
@@ -241,6 +249,8 @@ document.getElementById('aiBtn').onclick = async () => {
   } catch(err) {
     aiVerdict = null;
     status.textContent = '⚠️ AI check failed: ' + err.message + ' — you can still submit manually.';
+  } finally {
+    btn.disabled = false;
   }
 };
 
@@ -273,7 +283,7 @@ function letterbox(img, size){
   const ctx = canvas.getContext('2d');
   const s = Math.min(size/img.width, size/img.height);
   const nw = img.width*s, nh = img.height*s;
-  ctx.fillStyle = '#114'; ctx.fillRect(0,0,size,size);
+  ctx.fillStyle = 'rgb(114,114,114)'; ctx.fillRect(0,0,size,size);
   ctx.drawImage(img, (size-nw)/2, (size-nh)/2, nw, nh);
   return { canvas, scale: s, dx: (size-nw)/2, dy: (size-nh)/2 };
 }
@@ -326,8 +336,10 @@ function nms(boxes, iouThr=0.45){
 
 document.getElementById('yoloBtn').onclick = async () => {
   const status = document.getElementById('yoloStatus');
+  const btn = document.getElementById('yoloBtn');
   const file = document.getElementById('photo').files[0];
   if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
+  btn.disabled = true;
   status.textContent = '⏳ Loading YOLO model (first run ~10s) + detecting…';
   try {
     const img = new Image();
@@ -355,6 +367,8 @@ document.getElementById('yoloBtn').onclick = async () => {
   } catch(err) {
     yoloVerdict = null;
     status.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
+  } finally {
+    btn.disabled = false;
   }
 };
 
@@ -365,6 +379,7 @@ function drawBoxes(boxes){
   c.style.display = 'block';
   const ctx = c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
   ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 3;
   ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#ff3b30';
   boxes.forEach(b=>{
@@ -372,6 +387,7 @@ function drawBoxes(boxes){
     const label = (b.conf*100).toFixed(0) + '% ' + YOLO_CLASSES[b.cls].replace(' Spotted Lanternfly','');
     ctx.fillText(label, b.x, b.y>18?b.y-6:b.y+18);
   });
+  img.style.display = 'none';
 }
 
 // ===== Shared cloud DB (Supabase) + local fallback =====
@@ -383,19 +399,24 @@ const SUPABASE_URL = 'https://jhftlemkgeocnhnvbafz.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_KMKic67K9tx7TGTPmhHXyg_D7dn6CIq';
 let useCloud = false, sb = null, cache = [];
 
+function setDbStatus(txt){ const el = document.getElementById('dbStatus'); if (el) el.textContent = txt; }
+
 function getReports(){ return cache; }
 function saveLocal(r){ try{ localStorage.setItem('lantern_reports', JSON.stringify(r)); }catch{} }
 function loadLocal(){ try{ cache = JSON.parse(localStorage.getItem('lantern_reports')||'[]'); }catch{ cache = []; } }
 
 async function initDB(){
-  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) { loadLocal(); return; }
+  setDbStatus('⏳ Connecting to shared cloud DB…');
+  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) { loadLocal(); setDbStatus('💾 Local demo mode — shared DB not configured.'); return; }
   try {
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const { error } = await sb.from('lantern_reports').select('id', { count:'exact', head:true });
     if (error) throw error;
     useCloud = true;
+    setDbStatus('☁️ Shared cloud DB connected — every submission syncs for everyone.');
   } catch(err) {
     loadLocal();
+    setDbStatus('💾 Local demo mode — cloud DB not reachable right now.');
   }
 }
 
@@ -411,24 +432,48 @@ form.onsubmit = async e => {
   const stage = d.get('stage'), count = d.get('count'), action = d.get('action');
   const place = document.getElementById('place').value.trim();
   if(!stage||!count||!action){ setMsg('⚠️ Please answer Q1-Q3 first.', 'error'); return; }
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
   setMsg('Saving…', 'info');
   try {
+    let rid = null;
     if (useCloud) {
       const payload = { stage, count, action, lat:gps?.lat||null, lng:gps?.lng||null, place:place||null };
-      if (aiVerdict) { payload.ai_is_lanternfly = aiVerdict.is_lanternfly; payload.ai_stage = aiVerdict.stage; payload.ai_confidence = aiVerdict.confidence; payload.ai_note = aiVerdict.note; }
-      if (yoloVerdict) { payload.ai_is_lanternfly = yoloVerdict.is_lanternfly; payload.ai_stage = yoloVerdict.stage || (yoloVerdict.count ? 'lanternfly x'+yoloVerdict.count : null); payload.ai_confidence = Math.round(yoloVerdict.confidence*100); payload.ai_note = 'YOLOv8n browser (Roboflow-trained)'; }
-      const { error } = await sb.from('lantern_reports').insert([payload]).select();
+      if (aiVerdict) {
+        payload.ai_is_lanternfly = aiVerdict.is_lanternfly;
+        payload.ai_stage = aiVerdict.stage || null;
+        payload.ai_confidence = Math.max(0, Math.min(100, Math.round(parseFloat(aiVerdict.confidence)||0)));
+        payload.ai_note = aiVerdict.note || null;
+      }
+      if (yoloVerdict) {
+        payload.ai_is_lanternfly = yoloVerdict.is_lanternfly;
+        payload.ai_stage = yoloVerdict.stage || (yoloVerdict.count ? 'lanternfly x'+yoloVerdict.count : null);
+        payload.ai_confidence = Math.round(yoloVerdict.confidence*100);
+        payload.ai_note = 'YOLO nano browser (Roboflow-trained)' + (aiVerdict ? ' + Gemini cross-check' : '');
+      }
+      const { data, error } = await sb.from('lantern_reports').insert([payload]).select();
       if (error) throw new Error(error.message);
+      if (data && data[0] && data[0].id != null) rid = data[0].id;
     } else {
       saveLocal(cache);
     }
-    setMsg('✅ Report submitted successfully! Thanks for helping science.', 'success');
-    form.reset(); document.getElementById('preview').style.display='none';
+    setMsg(rid ? '✅ Report #'+rid+' submitted successfully! Thanks for helping science.' : '✅ Report submitted successfully! Thanks for helping science.', 'success');
+    form.reset();
+    if (photoURL) { URL.revokeObjectURL(photoURL); photoURL = null; }
+    document.getElementById('preview').style.display='none';
     document.getElementById('yoloCanvas').style.display='none';
+    gps = null;
+    document.getElementById('map').style.display='none';
+    locStatus.textContent='No GPS yet — you can still submit with a place name below.';
+    document.getElementById('place').value='';
+    const gk = document.getElementById('geminiKey');
+    try { gk.value = localStorage.getItem('gemini_key')||''; } catch {}
     aiVerdict = null; document.getElementById('aiStatus').textContent='No AI check yet.';
     yoloVerdict = null; document.getElementById('yoloStatus').textContent='No detection yet.';
   } catch(err) {
     setMsg('❌ Submit failed: ' + err.message + ' — please check your network and try again.', 'error');
+  } finally {
+    submitBtn.disabled = false;
   }
 };
 
