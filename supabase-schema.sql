@@ -1,5 +1,5 @@
 -- Run this in Supabase Dashboard -> SQL Editor -> New query
--- Creates shared table for lanternfly reports (visible to judges in Table Editor)
+-- Creates shared table for lanternfly reports (visible to researchers in Table Editor)
 
 create table if not exists lantern_reports (
   id bigint generated always as identity primary key,
@@ -9,20 +9,38 @@ create table if not exists lantern_reports (
   action text not null,
   lat text,
   lng text,
-  place text
+  place text,
+  ai_is_lanternfly boolean,
+  ai_stage text,
+  ai_confidence int,
+  ai_note text
 );
 
--- Allow public read + insert for class demo (no login needed)
+-- If the table already existed before AI columns were added:
+alter table lantern_reports
+  add column if not exists ai_is_lanternfly boolean,
+  add column if not exists ai_stage text,
+  add column if not exists ai_confidence int,
+  add column if not exists ai_note text;
+
+-- Hardened RLS: public visitors can only submit (insert) reports.
+-- Reading GPS coordinates and deleting rows are restricted to authenticated dashboard admins / service role.
 alter table lantern_reports enable row level security;
 
 drop policy if exists "public read" on lantern_reports;
-create policy "public read" on lantern_reports for select using (true);
+drop policy if exists "public delete" on lantern_reports;
 
 drop policy if exists "public insert" on lantern_reports;
 create policy "public insert" on lantern_reports for insert with check (true);
 
-drop policy if exists "public delete" on lantern_reports;
-create policy "public delete" on lantern_reports for delete using (true);
+-- Lightweight health-check RPC so the frontend can verify DB connectivity without public SELECT access
+create or replace function public.lantern_db_health()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select true;
+$$;
 
--- Verify:
--- select * from lantern_reports order by created_at desc limit 10;
+grant execute on function public.lantern_db_health() to anon;

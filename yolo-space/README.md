@@ -1,5 +1,5 @@
 ---
-title: Spot-a-Lanternfly YOLOv11-Nano
+title: Spot-a-Lanternfly YOLO
 emoji: 🪲
 colorFrom: green
 colorTo: red
@@ -9,13 +9,12 @@ app_file: app.py
 pinned: false
 ---
 
-# Spot-a-Lanternfly — YOLOv11-Nano detector
+# Spot-a-Lanternfly — YOLO detector
 
-Trained locally (RTX 4060) on spotted-lanternfly photos with pseudo-labels from OWLv2.
-Circles lanternflies and returns confidence.
+Fine-tuned YOLOv8n (`best.pt`) for spotted lanternfly detection across 3 life-stage classes:
 
-- Model: YOLOv11-Nano (~5.5MB)
-- Classes: `lanternfly` (single class)
-- REST endpoint: `POST /yolo_detect` (multipart field `image`)
+- `Adult Spotted Lanternfly`
+- `Early Nymph Spotted Lanternfly`
+- `Late Nymph Spotted Lanternfly`
 
-mAP50 ~0.69 on held-out val.
+API endpoint: `yolo_detect` (via Gradio 5 API).
