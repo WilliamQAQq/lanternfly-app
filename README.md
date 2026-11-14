@@ -61,6 +61,7 @@ Schema: [`supabase-schema.sql`](supabase-schema.sql) · Legacy AI migration: [`s
 ```text
 index.html                  # the whole web app (single file)
 .nojekyll                   # disables Jekyll on GitHub Pages
+images/spotted-lanternfly.jpg # public-domain USDA-ARS hero photo (Lycorma delicatula)
 models/best.onnx            # 3-class YOLO ONNX model for browser inference
 supabase-schema.sql         # table, hardened RLS policies, health-check RPC
 supabase-migration-ai.sql   # standalone migration for adding AI columns

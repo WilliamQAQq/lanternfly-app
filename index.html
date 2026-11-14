@@ -61,6 +61,9 @@
   .resource-card p { margin:0; font-size:13px; color:#595959; }
   .btn-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--dark); color:#fff; text-decoration:none; border-radius:8px; min-height:44px; padding:10px 18px; font-size:15px; font-weight:700; margin-top:8px; }
   .btn-link:hover { background:#383838; }
+  .hero-photo { margin:16px 0; }
+  .hero-photo img { width:100%; height:auto; border-radius:8px; display:block; }
+  .hero-photo figcaption { margin-top:10px; font-size:13px; }
   footer { text-align:center; color:#595959; font-size:13px; padding:20px; }
   @media (pointer: coarse) {
     .opts label, button, .btn-link, input[type=text], input[type=password] { min-height:48px; }
@@ -79,6 +82,17 @@
 </header>
 
 <main>
+  <figure class="card hero-photo">
+    <img
+      src="images/spotted-lanternfly.jpg"
+      alt="Adult spotted lanternfly (Lycorma delicatula) on green foliage with black-spotted tan forewings and bright red, black, and white hindwings spread"
+      width="960"
+      height="640"
+      fetchpriority="high"
+    />
+    <figcaption class="muted">Spotted lanternfly (<i>Lycorma delicatula</i>) adult — USDA-ARS photo by Stephen Ausmus (Public domain).</figcaption>
+  </figure>
+
   <section class="card">
     <h2>Learn more about spotted lanternflies</h2>
     <p class="muted" style="margin:0;">Official government, agricultural, and reference guides on how to identify, report, and stop the spread of <i>Lycorma delicatula</i>.</p>
