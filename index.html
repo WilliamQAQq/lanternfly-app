@@ -3,9 +3,25 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="referrer" content="strict-origin-when-cross-origin" />
 <title>Spot-a-Lanternfly — Help Entomologists</title>
+<link rel="preconnect" href="https://jhftlemkgeocnhnvbafz.supabase.co" crossorigin />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<script
+  defer
+  src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"
+  integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O"
+  crossorigin="anonymous"
+  referrerpolicy="no-referrer"
+></script>
 <style>
-  :root { --red:#c0392b; --dark:#222; --green:#1e8449; --blue:#2e86c1; --bg:#f7f5f0; --card:#fff; }
+  :root {
+    --red:#c0392b; --red-ink:#b3261e; --red-bg:#fdedec; --red-border:#f5b7b1;
+    --dark:#222; --muted:#595959; --bg:#f7f5f0; --card:#fff; --card-border:#e8e2d9;
+    --green:#1e8449; --green-bg:#eafaf1; --green-border:#a9dfbf;
+    --blue:#2e86c1; --blue-ink:#1d5e91; --blue-bg:#f0f6ff; --blue-border:#cfe0ff;
+    --focus:#0b57d0;
+  }
   * { box-sizing:border-box; }
   body { margin:0; font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; background:var(--bg); color:var(--dark); line-height:1.45; }
   header { background:var(--dark); color:#fff; padding:28px 20px; text-align:center; }
@@ -13,66 +29,66 @@
   header p { margin:0; opacity:.9; }
   header .badge { display:inline-block; background:var(--red); color:#fff; padding:4px 12px; border-radius:20px; font-size:13px; margin-bottom:12px; }
   main { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
-  .card { background:var(--card); border-radius:12px; padding:20px; margin:16px 0; box-shadow:0 2px 10px rgba(0,0,0,.06); border:1px solid #e8e2d9; }
+  .card { background:var(--card); border-radius:12px; padding:20px; margin:16px 0; box-shadow:0 2px 10px rgba(0,0,0,.06); border:1px solid var(--card-border); }
   h2 { margin:0 0 10px; font-size:20px; }
   h3 { margin:0 0 6px; font-size:16px; }
-  .muted { color:#595959; font-size:14px; }
+  h4 { margin:0 0 6px; font-size:15px; }
+  .muted { color:var(--muted); font-size:14px; }
   .q { margin:16px 0; padding:14px; background:#fafafa; border-radius:8px; border:1px solid #e6e6e6; }
   fieldset.q { min-width:0; }
   fieldset.q.is-invalid { border-color:var(--red); background:#fdf6f6; }
   .q-title { font-weight:700; margin-bottom:8px; display:block; padding:0; }
   .req-star { color:var(--red); }
   .opts { display:flex; flex-wrap:wrap; gap:8px; }
-  .opts label { border:2px solid #ccc; border-radius:20px; padding:10px 14px; min-height:44px; display:inline-flex; align-items:center; cursor:pointer; font-size:15px; user-select:none; position:relative; background:#fff; }
+  .opts label { border:2px solid #ccc; border-radius:20px; padding:10px 14px; min-height:44px; display:inline-flex; align-items:center; cursor:pointer; font-size:15px; user-select:none; position:relative; background:#fff; touch-action:manipulation; }
   .visually-hidden {
     position:absolute !important; clip-path:inset(50%) !important; overflow:hidden !important;
     width:1px !important; height:1px !important; margin:-1px !important; padding:0 !important; border:0 !important; white-space:nowrap !important;
   }
   .opts input:checked + span { font-weight:700; }
-  .opts input:focus-visible + span { outline:3px solid var(--green); outline-offset:3px; border-radius:12px; }
-  .opts label:has(input:checked) { border-color:var(--green); background:#eafaf1; }
-  .error-msg { display:none; color:#b3261e; font-size:14px; font-weight:600; margin-top:8px; }
+  .opts label:has(input:focus-visible) { outline:3px solid var(--focus); outline-offset:2px; }
+  .opts label:has(input:checked) { border-color:var(--green); background:var(--green-bg); }
+  .error-msg { display:none; color:var(--red-ink); font-size:14px; font-weight:600; margin-top:8px; }
   fieldset.q.is-invalid .error-msg { display:block; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .key-row { display:flex; gap:8px; align-items:stretch; margin-bottom:8px; }
   .key-row input { flex:1; }
   input[type=text], input[type=password] { font:inherit; font-size:max(1rem, 1em); width:100%; min-height:44px; padding:10px 12px; border:1px solid #767676; border-radius:8px; background:#fff; color:var(--dark); }
   input[type=file] { font:inherit; font-size:15px; max-width:100%; min-height:44px; padding:6px 0; }
-  button { font:inherit; cursor:pointer; border:none; border-radius:8px; min-height:44px; padding:10px 16px; font-size:15px; font-weight:700; }
+  button { font:inherit; cursor:pointer; border:none; border-radius:8px; min-height:44px; padding:10px 16px; font-size:15px; font-weight:700; touch-action:manipulation; }
   button:disabled { opacity:.55; cursor:not-allowed; }
-  :is(a, button, input):focus-visible { outline:3px solid #0b57d0; outline-offset:2px; }
+  :is(a, button, input):focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
   .btn-primary { background:var(--green); color:#fff; width:100%; margin-top:12px; min-height:48px; }
   .btn-gps { background:var(--blue); color:#fff; }
   .btn-small { background:#e9e9e9; color:var(--dark); padding:8px 12px; font-size:14px; border-radius:6px; }
-  .subpanel { margin-top:12px; padding:12px; background:#f0f6ff; border-radius:8px; border:1px solid #cfe0ff; }
+  .subpanel { margin-top:12px; padding:12px; background:var(--blue-bg); border-radius:8px; border:1px solid var(--blue-border); }
   .field-label { display:block; font-weight:700; font-size:14px; margin:10px 0 4px; }
   #locStatus, #yoloStatus, #aiStatus { font-size:14px; margin-top:8px; }
   #preview, #yoloCanvas { max-width:100%; height:auto; border-radius:8px; margin-top:8px; display:none; }
   #map { height:280px; border-radius:10px; margin-top:10px; display:none; }
   .msg-box { margin-top:12px; padding:10px 14px; border-radius:8px; font-size:15px; text-align:center; display:none; }
-  .msg-success { display:block; background:#eafaf1; color:#1e8449; border:1px solid #a9dfbf; font-weight:700; }
-  .msg-error { display:block; background:#fdedec; color:#b3261e; border:1px solid #f5b7b1; font-weight:700; }
-  .msg-info { display:block; background:#f0f6ff; color:#1d5e91; border:1px solid #cfe0ff; }
+  .msg-success { display:block; background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); font-weight:700; }
+  .msg-error { display:block; background:var(--red-bg); color:var(--red-ink); border:1px solid var(--red-border); font-weight:700; }
+  .msg-info { display:block; background:var(--blue-bg); color:var(--blue-ink); border:1px solid var(--blue-border); }
   .link-grid { list-style:none; padding:0; margin:12px 0 0; display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; }
   .resource-link { display:block; height:100%; text-decoration:none; color:inherit; border-radius:10px; }
-  .resource-card { height:100%; padding:14px; background:#fafafa; border:1px solid #ddd; border-radius:10px; transition:border-color .15s ease, background-color .15s ease; }
-  .resource-link:hover .resource-card { border-color:var(--blue); background:#f0f6ff; }
+  .resource-card { height:100%; padding:14px; background:#fafafa; border:1px solid #ddd; border-radius:10px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .resource-card { transition:border-color .15s ease, background-color .15s ease; }
+  }
+  .resource-link:hover .resource-card { border-color:var(--blue); background:var(--blue-bg); }
   .resource-card h3 { margin:0 0 4px; font-size:15px; color:#184e7a; }
-  .resource-card p { margin:0; font-size:13px; color:#595959; }
-  .btn-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--dark); color:#fff; text-decoration:none; border-radius:8px; min-height:44px; padding:10px 18px; font-size:15px; font-weight:700; margin-top:8px; }
+  .resource-card p { margin:0; font-size:13px; color:var(--muted); }
+  .btn-link { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:var(--dark); color:#fff; text-decoration:none; border-radius:8px; min-height:44px; padding:10px 18px; font-size:15px; font-weight:700; margin-top:8px; touch-action:manipulation; }
   .btn-link:hover { background:#383838; }
   .hero-photo { margin:16px 0; }
   .hero-photo img { width:100%; height:auto; border-radius:8px; display:block; }
   .hero-photo figcaption { margin-top:10px; font-size:13px; }
-  footer { text-align:center; color:#595959; font-size:13px; padding:20px; }
+  footer { text-align:center; color:var(--muted); font-size:13px; padding:20px; }
   @media (pointer: coarse) {
     .opts label, button, .btn-link, input[type=text], input[type=password] { min-height:48px; }
   }
 </style>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 </head>
 <body>
 <header>
@@ -140,12 +156,12 @@
     </a>
   </section>
 
-  <div class="card">
+  <section class="card">
     <h2>Why this helps</h2>
     <p class="muted">Spotted lanternflies destroy grapes, maples, fruit trees. Entomologists need <b>where + what stage + how many</b> to track spread and remove them. This app makes reporting take &lt; 30 seconds.</p>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="card">
     <h2 id="reportHeading">Report a sighting</h2>
     <p class="muted" style="margin:0 0 8px;">Questions marked <span class="req-star" aria-hidden="true">*</span> are required.</p>
     <form id="form" aria-labelledby="reportHeading" autocomplete="off" novalidate>
@@ -184,7 +200,7 @@
         <h3>📍 Location (optional, GPS if you want)</h3>
         <div class="row">
           <button type="button" class="btn-gps" id="gpsBtn">Use my GPS location</button>
-          <button type="button" class="btn-small" id="clearGps">Clear GPS</button>
+          <button type="button" class="btn-small" id="clearGps" hidden>Clear GPS</button>
         </div>
         <div id="locStatus" class="muted" aria-live="polite">No GPS yet — you can still submit with a place name below.</div>
         <div id="map"></div>
@@ -203,7 +219,7 @@
         <canvas id="yoloCanvas" aria-label="Annotated photo with detected lanternfly bounding boxes"></canvas>
 
         <div class="subpanel">
-          <h3>🔎 YOLO detector — circles lanternflies + probability</h3>
+          <h4>🔎 YOLO detector — circles lanternflies + probability</h4>
           <p class="muted" style="margin:4px 0 8px;">Detects Adult &amp; Nymph stages locally in your browser (onnxruntime-web). No server, no API key, photo never leaves your device. (For egg masses, select Q1 manually or use AI check below.)</p>
           <div class="row">
             <button type="button" class="btn-gps" id="yoloBtn">🔎 Detect lanternflies</button>
@@ -212,11 +228,11 @@
         </div>
 
         <div class="subpanel">
-          <h3>🤖 AI check — is this a lanternfly?</h3>
+          <h4>🤖 AI check — is this a lanternfly?</h4>
           <p id="geminiHelp" class="muted" style="margin:4px 0 8px;">Free, optional. Get a key once at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a>, paste it (saved only in this browser), then Identify. Key is never uploaded to our database.</p>
           <label class="field-label" for="geminiKey">Gemini API key</label>
           <div class="key-row">
-            <input type="password" id="geminiKey" aria-describedby="geminiHelp" placeholder="Paste Gemini API key (starts with AIza…)" autocorrect="off" autocapitalize="none" spellcheck="false" />
+            <input type="password" id="geminiKey" autocomplete="off" aria-describedby="geminiHelp" placeholder="Paste Gemini API key (starts with AIza…)" autocorrect="off" autocapitalize="none" spellcheck="false" />
             <button type="button" class="btn-small" id="toggleKeyBtn" aria-pressed="false" aria-label="Show Gemini API key">Show</button>
           </div>
           <div class="row">
@@ -229,521 +245,793 @@
       <button class="btn-primary" type="submit">Submit report → Help science!</button>
       <div class="msg-box" id="msg" role="status" aria-live="polite"></div>
     </form>
-  </div>
+  </section>
 </main>
 
 <footer>Class project — reports go to a shared cloud database for entomologists.<br><span id="dbStatus" class="muted">⏳ Checking connection…</span><br>Project repo: <a href="https://github.com/WilliamQAQq/lanternfly-app" target="_blank" rel="noopener noreferrer">github.com/WilliamQAQq/lanternfly-app</a></footer>
 
 <script>
-const GEMINI_MODEL = 'gemini-3.8-flash';
-const YOLO_MODEL_URL = 'models/best.onnx';
-const YOLO_INPUT = 640;
-const YOLO_CONF = 0.7;
-const YOLO_CLASSES = ['Adult Spotted Lanternfly', 'Early Nymph Spotted Lanternfly', 'Late Nymph Spotted Lanternfly'];
-const SUPABASE_URL = 'https://jhftlemkgeocnhnvbafz.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_KMKic67K9tx7TGTPmhHXyg_D7dn6CIq';
+(() => {
+  'use strict';
 
-let gps = null;
-let map = null, marker = null;
-let photoURL = null;
-let aiVerdict = null;   // {is_lanternfly, stage, confidence, note}
-let yoloVerdict = null; // {is_lanternfly, confidence, stage, count}
-let yoloSession = null;
-let useCloud = false, sb = null, cache = [];
-
-const form = document.getElementById('form');
-const locStatus = document.getElementById('locStatus');
-const photoInput = document.getElementById('photo');
-const previewImg = document.getElementById('preview');
-const yoloCanvas = document.getElementById('yoloCanvas');
-const clearPhotoBtn = document.getElementById('clearPhotoBtn');
-const geminiKeyInput = document.getElementById('geminiKey');
-const toggleKeyBtn = document.getElementById('toggleKeyBtn');
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-}
-
-function setMsg(text, type) {
-  const m = document.getElementById('msg');
-  m.textContent = text;
-  m.className = 'msg-box msg-' + type;
-}
-
-function setDbStatus(txt) {
-  const el = document.getElementById('dbStatus');
-  if (el) el.textContent = txt;
-}
-
-// ===== Validation helpers (required radio groups) =====
-const REQUIRED_GROUPS = ['stage', 'count', 'action'];
-
-function setGroupValidity(name, valid) {
-  const fs = document.getElementById('fs-' + name);
-  const errId = 'err-' + name;
-  const radios = fs.querySelectorAll('input[type="radio"]');
-  fs.classList.toggle('is-invalid', !valid);
-  radios.forEach(r => {
-    r.setAttribute('aria-invalid', valid ? 'false' : 'true');
-    if (valid) r.removeAttribute('aria-describedby');
-    else r.setAttribute('aria-describedby', errId);
-  });
-}
-
-REQUIRED_GROUPS.forEach(name => {
-  setGroupValidity(name, true);
-  document.getElementById('fs-' + name).addEventListener('change', () => setGroupValidity(name, true));
-});
-
-// ===== GPS & Leaflet map =====
-document.getElementById('gpsBtn').addEventListener('click', () => {
-  if (!navigator.geolocation) { locStatus.textContent = 'GPS not supported on this device.'; return; }
-  locStatus.textContent = 'Getting GPS… allow location access…';
-  navigator.geolocation.getCurrentPosition(pos => {
-    gps = { lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy) };
-    locStatus.textContent = `✅ GPS captured (±${gps.acc}m) — coordinates kept private, only shared with researchers.`;
-    showMap();
-  }, err => {
-    locStatus.textContent = 'GPS blocked/failed: ' + err.message + ' — you can still type a place name.';
-  }, { enableHighAccuracy:true, timeout:10000 });
-});
-
-function clearGpsState() {
-  gps = null;
-  if (marker) { marker.remove(); marker = null; }
-  document.getElementById('map').style.display = 'none';
-  locStatus.textContent = 'No GPS yet — you can still submit with a place name below.';
-}
-document.getElementById('clearGps').addEventListener('click', clearGpsState);
-
-function showMap() {
-  const el = document.getElementById('map');
-  el.style.display = 'block';
-  if (!map) {
-    map = L.map('map').setView([gps.lat, gps.lng], 14);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }).addTo(map);
-  } else {
-    map.setView([gps.lat, gps.lng], 14);
-  }
-  if (marker) marker.remove();
-  marker = L.marker([gps.lat, gps.lng]).addTo(map).bindPopup('Lanternfly here').openPopup();
-  setTimeout(() => map.invalidateSize(), 200);
-}
-
-// ===== Photo selection & state reset =====
-function clearPhotoState(resetInput = false) {
-  if (photoURL) { URL.revokeObjectURL(photoURL); photoURL = null; }
-  if (resetInput) photoInput.value = '';
-  previewImg.removeAttribute('src');
-  previewImg.style.display = 'none';
-  yoloCanvas.style.display = 'none';
-  clearPhotoBtn.hidden = true;
-  aiVerdict = null;
-  yoloVerdict = null;
-  document.getElementById('yoloStatus').textContent = 'No detection yet.';
-  document.getElementById('aiStatus').textContent = 'No AI check yet.';
-}
-
-photoInput.addEventListener('change', e => {
-  const f = e.target.files[0];
-  clearPhotoState(false);
-  if (!f) return;
-  photoURL = URL.createObjectURL(f);
-  previewImg.onload = () => {
-    yoloCanvas.width = previewImg.naturalWidth;
-    yoloCanvas.height = previewImg.naturalHeight;
+  const GEMINI_MODEL = 'gemini-3.8-flash';
+  const YOLO_MODEL_URL = 'models/best.onnx';
+  const YOLO_INPUT = 640;
+  const YOLO_CONF = 0.7;
+  const YOLO_CLASSES = ['Adult Spotted Lanternfly', 'Early Nymph Spotted Lanternfly', 'Late Nymph Spotted Lanternfly'];
+  const YOLO_STAGE_TO_Q1 = {
+    'Adult Spotted Lanternfly': 'Adult',
+    'Early Nymph Spotted Lanternfly': 'Nymph',
+    'Late Nymph Spotted Lanternfly': 'Nymph'
   };
-  previewImg.src = photoURL;
-  previewImg.style.display = 'block';
-  clearPhotoBtn.hidden = false;
-  document.getElementById('yoloStatus').textContent = 'Photo ready — press 🔎 Detect lanternflies (adults & nymphs).';
-  document.getElementById('aiStatus').textContent = 'Photo ready — press 🤖 Identify photo for AI check (optional).';
-});
+  const AI_STAGE_TO_Q1 = { Adult: 'Adult', Nymph: 'Nymph', 'Egg mass': 'Egg mass' };
+  const SUPABASE_URL = 'https://jhftlemkgeocnhnvbafz.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_KMKic67K9tx7TGTPmhHXyg_D7dn6CIq';
+  const GEMINI_KEY_STORAGE = 'gemini_key';
+  const LOCAL_REPORTS_KEY = 'lantern_reports';
 
-clearPhotoBtn.addEventListener('click', () => clearPhotoState(true));
+  const CDN_ASSETS = {
+    leafletCss: {
+      url: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+      integrity: 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'
+    },
+    leafletJs: {
+      url: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+      integrity: 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'
+    },
+    ortJs: {
+      url: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js',
+      integrity: 'sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp'
+    },
+    ortWasmBase: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/'
+  };
 
-// ===== Gemini key storage & unmask toggle =====
-try { geminiKeyInput.value = localStorage.getItem('gemini_key') || ''; } catch {}
-const saveGeminiKey = () => { try { localStorage.setItem('gemini_key', geminiKeyInput.value.trim()); } catch {} };
-geminiKeyInput.addEventListener('input', saveGeminiKey);
-geminiKeyInput.addEventListener('change', saveGeminiKey);
+  let gps = null;
+  let gpsSeq = 0;
+  let map = null, marker = null;
+  let photoURL = null;
+  let photoSeq = 0;
+  let aiVerdict = null;   // {is_lanternfly, stage, confidence, note}
+  let yoloVerdict = null; // {is_lanternfly, confidence, stage, count}
+  let yoloSession = null;
+  let yoloSessionPromise = null;
+  let useCloud = false, sb = null, cache = [];
 
-toggleKeyBtn.addEventListener('click', () => {
-  const shown = geminiKeyInput.type === 'text';
-  geminiKeyInput.type = shown ? 'password' : 'text';
-  toggleKeyBtn.textContent = shown ? 'Show' : 'Hide';
-  toggleKeyBtn.setAttribute('aria-pressed', String(!shown));
-  toggleKeyBtn.setAttribute('aria-label', shown ? 'Show Gemini API key' : 'Hide Gemini API key');
-});
+  const assetPromises = new Map();
+  const form = document.getElementById('form');
+  const locStatus = document.getElementById('locStatus');
+  const gpsBtn = document.getElementById('gpsBtn');
+  const clearGpsBtn = document.getElementById('clearGps');
+  const mapEl = document.getElementById('map');
+  const placeInput = document.getElementById('place');
+  const photoInput = document.getElementById('photo');
+  const previewImg = document.getElementById('preview');
+  const yoloCanvas = document.getElementById('yoloCanvas');
+  const clearPhotoBtn = document.getElementById('clearPhotoBtn');
+  const yoloBtn = document.getElementById('yoloBtn');
+  const yoloStatus = document.getElementById('yoloStatus');
+  const geminiKeyInput = document.getElementById('geminiKey');
+  const toggleKeyBtn = document.getElementById('toggleKeyBtn');
+  const aiBtn = document.getElementById('aiBtn');
+  const aiStatus = document.getElementById('aiStatus');
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const msgBox = document.getElementById('msg');
+  const dbStatusEl = document.getElementById('dbStatus');
 
-// ===== AI identify (Gemini Vision REST API) =====
-function downscaleToJpeg(file, maxSide = 768, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const s = Math.min(1, maxSide / Math.max(img.width, img.height));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.width * s);
-      c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', quality).split(',')[1]);
-    };
-    img.onerror = err => { URL.revokeObjectURL(url); reject(err); };
-    img.src = url;
-  });
-}
-
-document.getElementById('aiBtn').addEventListener('click', async () => {
-  const status = document.getElementById('aiStatus');
-  const btn = document.getElementById('aiBtn');
-  const key = geminiKeyInput.value.trim() || (() => { try { return (localStorage.getItem('gemini_key') || '').trim(); } catch { return ''; } })();
-  const file = photoInput.files[0];
-  if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
-  if (!key) { status.textContent = '⚠️ Paste your free Gemini API key first (aistudio.google.com/apikey).'; geminiKeyInput.focus(); return; }
-  btn.disabled = true;
-  status.textContent = '🤖 AI is looking… (sending to Gemini, ~5s)';
-  try {
-    const b64 = await downscaleToJpeg(file);
-    const prompt = 'You are an entomology assistant. Is the insect or egg mass in this photo a spotted lanternfly (Lycorma delicatula)? Respond with JSON matching the schema: is_lanternfly (boolean), stage ("Adult" | "Nymph" | "Egg mass" | "Not a lanternfly"), confidence (integer 0-100), and note (one short sentence).';
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: 'image/jpeg', data: b64 } }
-          ]
-        }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          responseJsonSchema: {
-            type: 'object',
-            properties: {
-              is_lanternfly: { type: 'boolean' },
-              stage: { type: 'string', enum: ['Adult', 'Nymph', 'Egg mass', 'Not a lanternfly'] },
-              confidence: { type: 'integer', minimum: 0, maximum: 100 },
-              note: { type: 'string' }
-            },
-            required: ['is_lanternfly', 'stage', 'confidence', 'note'],
-            additionalProperties: false
-          },
-          thinkingConfig: { thinkingLevel: 'LOW' }
-        }
-      })
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error('Gemini HTTP ' + res.status + ': ' + t.slice(0, 160));
+  const safeStorage = {
+    get(key, fallback = '') {
+      try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(key, value); } catch {}
     }
-    const j = await res.json();
-    const parts = j.candidates?.[0]?.content?.parts || [];
-    let txt = parts.filter(p => !p.thought && p.text).map(p => p.text).join('').trim();
-    txt = txt.replace(/^```json\s*|```$/g, '').trim();
-    const v = JSON.parse(txt);
-    aiVerdict = v;
-    status.innerHTML = (v.is_lanternfly ? '✅ <b>Likely a lanternfly</b>' : '❌ <b>Does not look like a lanternfly</b>')
-      + ' — ' + escapeHtml(v.stage || '') + ' (' + (v.confidence ?? '?') + '%)<br><span class="muted">' + escapeHtml(v.note || '') + '</span>';
-    const mapStage = { 'Adult':'Adult', 'Nymph':'Nymph', 'Egg mass':'Egg mass' };
-    if (v.is_lanternfly && mapStage[v.stage]) {
-      const radio = document.querySelector('input[name="stage"][value="' + mapStage[v.stage] + '"]');
-      if (radio) {
+  };
+
+  function setMsg(text, type) {
+    msgBox.textContent = text;
+    msgBox.className = 'msg-box msg-' + type;
+  }
+
+  function setDbStatus(txt) {
+    if (dbStatusEl) dbStatusEl.textContent = txt;
+  }
+
+  function setButtonBusy(btn, busy, busyLabel) {
+    if (busy) {
+      if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      if (busyLabel) btn.textContent = busyLabel;
+    } else {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+      if (btn.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
+    }
+  }
+
+  function renderStatus(el, lines) {
+    el.textContent = '';
+    lines.forEach((line, idx) => {
+      if (idx > 0) el.appendChild(document.createElement('br'));
+      if (line.muted) {
+        const span = document.createElement('span');
+        span.className = 'muted';
+        span.textContent = line.text;
+        el.appendChild(span);
+        return;
+      }
+      if (line.prefix) el.append(line.prefix);
+      if (line.bold) {
+        const b = document.createElement('b');
+        b.textContent = line.bold;
+        el.appendChild(b);
+      }
+      if (line.suffix) el.append(line.suffix);
+    });
+  }
+
+  function loadStylesheet(href, integrity) {
+    if (assetPromises.has(href)) return assetPromises.get(href);
+    const p = new Promise((resolve, reject) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.integrity = integrity;
+      link.crossOrigin = 'anonymous';
+      link.referrerPolicy = 'no-referrer';
+      link.onload = () => resolve();
+      link.onerror = () => {
+        assetPromises.delete(href);
+        link.remove();
+        reject(new Error('Failed to load stylesheet: ' + href));
+      };
+      document.head.appendChild(link);
+    });
+    assetPromises.set(href, p);
+    return p;
+  }
+
+  function loadScript(src, integrity, globalName) {
+    if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+    if (assetPromises.has(src)) return assetPromises.get(src);
+    const p = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.integrity = integrity;
+      s.crossOrigin = 'anonymous';
+      s.referrerPolicy = 'no-referrer';
+      s.onload = () => resolve(globalName ? window[globalName] : undefined);
+      s.onerror = () => {
+        assetPromises.delete(src);
+        s.remove();
+        reject(new Error('Failed to load script: ' + src));
+      };
+      document.head.appendChild(s);
+    });
+    assetPromises.set(src, p);
+    return p;
+  }
+
+  // ===== Validation helpers (required radio groups) =====
+  const REQUIRED_GROUPS = ['stage', 'count', 'action'];
+
+  function setGroupValidity(name, valid) {
+    const fs = document.getElementById('fs-' + name);
+    const errId = 'err-' + name;
+    const radios = fs.querySelectorAll('input[type="radio"]');
+    fs.classList.toggle('is-invalid', !valid);
+    radios.forEach(r => {
+      r.setAttribute('aria-invalid', valid ? 'false' : 'true');
+      if (valid) r.removeAttribute('aria-describedby');
+      else r.setAttribute('aria-describedby', errId);
+    });
+  }
+
+  function autoSelectStage(stageValue) {
+    if (!stageValue) return false;
+    const radios = document.querySelectorAll('input[name="stage"]');
+    for (const radio of radios) {
+      if (radio.value === stageValue) {
         radio.checked = true;
         setGroupValidity('stage', true);
-        status.innerHTML += '<br>👉 Q1 auto-filled as <b>' + escapeHtml(mapStage[v.stage]) + '</b> — change it if you disagree.';
+        return true;
       }
     }
-  } catch (err) {
-    aiVerdict = null;
-    status.textContent = '⚠️ AI check failed: ' + err.message + ' — you can still submit manually.';
-  } finally {
-    btn.disabled = false;
+    return false;
   }
-});
 
-// ===== YOLO detector — runs locally in browser (onnxruntime-web) =====
-// Model: models/best.onnx — YOLOv8n fine-tuned on 3.4k real annotated lanternfly photos (Roboflow)
-// Classes: 0=Adult, 1=Early Nymph, 2=Late Nymph. Output: [1, 7, 8400] = (cx,cy,w,h, cls0,cls1,cls2)
-async function loadYoloSession() {
-  if (yoloSession) return yoloSession;
-  if (!window.ort) throw new Error('onnxruntime-web failed to load (check network / CDN)');
-  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-  try {
-    yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ['webgpu', 'wasm'] });
-  } catch {
-    yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ['wasm'] });
-  }
-  return yoloSession;
-}
-
-function letterbox(img, size) {
-  const canvas = document.createElement('canvas');
-  canvas.width = size; canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  const s = Math.min(size / img.width, size / img.height);
-  const nw = img.width * s, nh = img.height * s;
-  ctx.fillStyle = 'rgb(114,114,114)';
-  ctx.fillRect(0, 0, size, size);
-  ctx.drawImage(img, (size - nw) / 2, (size - nh) / 2, nw, nh);
-  return { canvas, scale: s, dx: (size - nw) / 2, dy: (size - nh) / 2 };
-}
-
-function nms(boxes, iouThr = 0.45) {
-  boxes.sort((a, b) => b.conf - a.conf);
-  const keep = [];
-  while (boxes.length) {
-    const a = boxes.shift();
-    keep.push(a);
-    boxes = boxes.filter(b => {
-      const ix = Math.max(a.x, b.x), iy = Math.max(a.y, b.y);
-      const iw = Math.min(a.x + a.w, b.x + b.w) - ix;
-      const ih = Math.min(a.y + a.h, b.y + b.h) - iy;
-      if (iw <= 0 || ih <= 0) return true;
-      const inter = iw * ih, uni = a.w * a.h + b.w * b.h - inter;
-      return (inter / uni) <= iouThr;
-    });
-  }
-  return keep;
-}
-
-async function yoloInfer(img) {
-  const session = await loadYoloSession();
-  const { canvas, scale, dx, dy } = letterbox(img, YOLO_INPUT);
-  const data = canvas.getContext('2d').getImageData(0, 0, YOLO_INPUT, YOLO_INPUT).data;
-  const plane = YOLO_INPUT * YOLO_INPUT;
-  const input = new Float32Array(3 * plane);
-  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-    input[p] = data[i] / 255.0;
-    input[plane + p] = data[i + 1] / 255.0;
-    input[2 * plane + p] = data[i + 2] / 255.0;
-  }
-  const tensor = new ort.Tensor('float32', input, [1, 3, YOLO_INPUT, YOLO_INPUT]);
-  const out = await session.run({ images: tensor });
-  const preds = out.output0.data; // [1,7,8400] channel-major
-  const n = preds.length / 7;
-  const boxes = [];
-  for (let i = 0; i < n; i++) {
-    let cls = 0, conf = -1;
-    for (let c = 0; c < 3; c++) {
-      const s = preds[(4 + c) * n + i];
-      if (s > conf) { conf = s; cls = c; }
-    }
-    if (conf < YOLO_CONF) continue;
-    const cx = (preds[0 * n + i] - dx) / scale;
-    const cy = (preds[1 * n + i] - dy) / scale;
-    const w = preds[2 * n + i] / scale;
-    const h = preds[3 * n + i] / scale;
-    boxes.push({ x: cx - w / 2, y: cy - h / 2, w, h, conf, cls });
-  }
-  return nms(boxes);
-}
-
-function drawBoxes(boxes, img) {
-  const w = img.naturalWidth || img.width;
-  const h = img.naturalHeight || img.height;
-  yoloCanvas.width = w;
-  yoloCanvas.height = h;
-  yoloCanvas.style.display = 'block';
-  const ctx = yoloCanvas.getContext('2d');
-  ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(img, 0, 0, w, h);
-
-  const scale = Math.max(1, Math.round(Math.max(w, h) / 600));
-  const lineW = Math.max(3, scale * 3);
-  const fontSize = Math.max(14, scale * 16);
-  const pad = Math.max(4, scale * 4);
-  ctx.font = `bold ${fontSize}px sans-serif`;
-  ctx.textBaseline = 'top';
-
-  boxes.forEach(b => {
-    ctx.strokeStyle = '#ff3b30';
-    ctx.lineWidth = lineW;
-    ctx.strokeRect(b.x, b.y, b.w, b.h);
-    const label = (b.conf * 100).toFixed(0) + '% ' + YOLO_CLASSES[b.cls].replace(' Spotted Lanternfly', '');
-    const tw = ctx.measureText(label).width;
-    const th = fontSize + pad * 2;
-    const tx = Math.max(0, Math.min(b.x, w - tw - pad * 2));
-    const ty = b.y > th + 2 ? b.y - th : Math.min(h - th, b.y + 2);
-    ctx.fillStyle = 'rgba(255, 59, 48, 0.9)';
-    ctx.fillRect(tx, ty, tw + pad * 2, th);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(label, tx + pad, ty + pad);
+  REQUIRED_GROUPS.forEach(name => {
+    setGroupValidity(name, true);
+    document.getElementById('fs-' + name).addEventListener('change', () => setGroupValidity(name, true));
   });
-  previewImg.style.display = 'none';
-}
 
-document.getElementById('yoloBtn').addEventListener('click', async () => {
-  const status = document.getElementById('yoloStatus');
-  const btn = document.getElementById('yoloBtn');
-  const file = photoInput.files[0];
-  if (!file) { status.textContent = '⚠️ Choose a photo first.'; return; }
-  btn.disabled = true;
-  status.textContent = '⏳ Loading YOLO model (first run ~10s) + detecting…';
-  const tmpUrl = URL.createObjectURL(file);
-  try {
-    const img = new Image();
-    img.src = tmpUrl;
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
-    const boxes = await yoloInfer(img);
-    if (!boxes.length) {
-      yoloVerdict = { is_lanternfly: false, confidence: 0, stage: null, count: 0 };
-      yoloCanvas.style.display = 'none';
-      previewImg.style.display = 'block';
-      status.innerHTML = '❌ <b>No adult/nymph lanternfly detected</b> (conf &ge; ' + (YOLO_CONF * 100) + '%) — if this is an egg mass or unclear angle, select Q1 manually or try AI check.';
+  // ===== GPS & Leaflet map (lazy-loaded with SRI on capture) =====
+  function ensureLeaflet() {
+    return Promise.all([
+      loadStylesheet(CDN_ASSETS.leafletCss.url, CDN_ASSETS.leafletCss.integrity),
+      loadScript(CDN_ASSETS.leafletJs.url, CDN_ASSETS.leafletJs.integrity, 'L')
+    ]);
+  }
+
+  gpsBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+      locStatus.textContent = 'GPS not supported on this device.';
       return;
     }
-    const best = boxes[0];
-    const stage = YOLO_CLASSES[best.cls];
-    yoloVerdict = { is_lanternfly: true, confidence: best.conf, stage, count: boxes.length };
-    status.innerHTML = '✅ <b>Lanternfly detected</b> — ' + escapeHtml(stage) + ' (' + (best.conf * 100).toFixed(1) + '%)<br>'
-      + '🔢 ' + boxes.length + ' box(es) found. Submit to store the result.';
-    drawBoxes(boxes, img);
-    const stageMap = { 'Adult Spotted Lanternfly':'Adult', 'Early Nymph Spotted Lanternfly':'Nymph', 'Late Nymph Spotted Lanternfly':'Nymph' };
-    const q1val = stageMap[stage];
-    if (q1val) {
-      const radio = document.querySelector('input[name="stage"][value="' + q1val + '"]');
-      if (radio) {
-        radio.checked = true;
-        setGroupValidity('stage', true);
-        status.innerHTML += '<br>👉 Q1 auto-filled as <b>' + escapeHtml(q1val) + '</b> — change it if you disagree.';
-      }
-    }
-  } catch (err) {
-    yoloVerdict = null;
-    status.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
-  } finally {
-    URL.revokeObjectURL(tmpUrl);
-    btn.disabled = false;
-  }
-});
-
-// ===== Shared cloud DB (Supabase) + local fallback =====
-function saveLocal(r) {
-  try { localStorage.setItem('lantern_reports', JSON.stringify(r.slice(0, 200))); } catch {}
-}
-function loadLocal() {
-  try { cache = JSON.parse(localStorage.getItem('lantern_reports') || '[]'); } catch { cache = []; }
-}
-
-async function initDB() {
-  setDbStatus('⏳ Connecting to shared cloud DB…');
-  if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) {
-    loadLocal();
-    setDbStatus('💾 Local demo mode — shared DB not configured.');
-    return;
-  }
-  try {
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    // Prefer insert-safe health RPC; fall back to head select if older schema is deployed
-    const { error: rpcErr } = await sb.rpc('lantern_db_health');
-    if (rpcErr) {
-      const msg = (rpcErr.message || '').toLowerCase();
-      if (rpcErr.code === 'PGRST202' || msg.includes('lantern_db_health')) {
-        const { error } = await sb.from('lantern_reports').select('id', { count:'exact', head:true });
-        if (error) throw error;
-      } else {
-        throw rpcErr;
-      }
-    }
-    useCloud = true;
-    setDbStatus('☁️ Shared cloud DB connected — every submission syncs for everyone.');
-  } catch {
-    loadLocal();
-    setDbStatus('💾 Local demo mode — cloud DB not reachable right now.');
-  }
-}
-
-const dbReady = initDB();
-
-function buildAiPayload(ai, yolo) {
-  if (!ai && !yolo) return {};
-  const clamp = v => Math.max(0, Math.min(100, Math.round(parseFloat(v) || 0)));
-  if (ai && !yolo) {
-    return {
-      ai_is_lanternfly: Boolean(ai.is_lanternfly),
-      ai_stage: ai.stage || null,
-      ai_confidence: clamp(ai.confidence),
-      ai_note: ai.note || null
-    };
-  }
-  if (!ai && yolo) {
-    const conf = clamp(yolo.confidence * 100);
-    return {
-      ai_is_lanternfly: Boolean(yolo.is_lanternfly),
-      ai_stage: yolo.stage || (yolo.is_lanternfly ? 'lanternfly x' + yolo.count : 'No adult/nymph detected'),
-      ai_confidence: conf,
-      ai_note: 'YOLO nano browser (Roboflow-trained): ' + (yolo.count ? yolo.count + ' box(es)' : '0 boxes >= 70%')
-    };
-  }
-  const yoloConf = clamp(yolo.confidence * 100);
-  const gemConf = clamp(ai.confidence);
-  const isLanternfly = Boolean(yolo.is_lanternfly || ai.is_lanternfly);
-  const stage = yolo.is_lanternfly ? (yolo.stage || ai.stage || null) : (ai.stage || null);
-  const confidence = yolo.is_lanternfly
-    ? (ai.is_lanternfly ? Math.max(yoloConf, gemConf) : yoloConf)
-    : gemConf;
-  const yoloSummary = yolo.is_lanternfly ? `${yolo.stage} (${yoloConf}%, ${yolo.count} box)` : 'none >= 70%';
-  const gemSummary = `${ai.is_lanternfly ? 'yes' : 'no'} (${ai.stage || '?'}, ${gemConf}%)`;
-  return {
-    ai_is_lanternfly: isLanternfly,
-    ai_stage: stage,
-    ai_confidence: confidence,
-    ai_note: `YOLO: ${yoloSummary} | Gemini: ${gemSummary}${ai.note ? ' — ' + ai.note : ''}`
-  };
-}
-
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const d = new FormData(form);
-  const stage = d.get('stage'), count = d.get('count'), action = d.get('action');
-  const place = document.getElementById('place').value.trim();
-
-  let firstInvalid = null;
-  REQUIRED_GROUPS.forEach(name => {
-    const valid = Boolean(d.get(name));
-    setGroupValidity(name, valid);
-    if (!valid && !firstInvalid) firstInvalid = document.querySelector('#fs-' + name + ' input[type="radio"]');
+    const seq = ++gpsSeq;
+    setButtonBusy(gpsBtn, true, '📍 Getting GPS…');
+    locStatus.textContent = 'Getting GPS… allow location access…';
+    navigator.geolocation.getCurrentPosition(async pos => {
+      setButtonBusy(gpsBtn, false);
+      if (seq !== gpsSeq) return;
+      gps = {
+        lat: pos.coords.latitude.toFixed(6),
+        lng: pos.coords.longitude.toFixed(6),
+        acc: Math.round(pos.coords.accuracy)
+      };
+      clearGpsBtn.hidden = false;
+      locStatus.textContent = `✅ GPS captured (±${gps.acc}m) — coordinates kept private, only shared with researchers.`;
+      await showMap();
+    }, err => {
+      setButtonBusy(gpsBtn, false);
+      if (seq !== gpsSeq) return;
+      locStatus.textContent = 'GPS blocked/failed: ' + err.message + ' — you can still type a place name.';
+    }, { enableHighAccuracy: true, timeout: 10000 });
   });
-  if (firstInvalid) {
-    setMsg('⚠️ Please answer Q1–Q3 before submitting.', 'error');
-    firstInvalid.focus();
-    return;
+
+  function clearGpsState(restoreFocus = false) {
+    gpsSeq++;
+    gps = null;
+    if (marker) { marker.remove(); marker = null; }
+    mapEl.style.display = 'none';
+    clearGpsBtn.hidden = true;
+    locStatus.textContent = 'No GPS yet — you can still submit with a place name below.';
+    if (restoreFocus) gpsBtn.focus();
+  }
+  clearGpsBtn.addEventListener('click', () => clearGpsState(true));
+
+  async function showMap() {
+    try {
+      await ensureLeaflet();
+      if (!gps || !window.L) return;
+      mapEl.style.display = 'block';
+      if (!map) {
+        map = L.map('map').setView([gps.lat, gps.lng], 14);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+      } else {
+        map.setView([gps.lat, gps.lng], 14);
+      }
+      if (marker) marker.remove();
+      marker = L.marker([gps.lat, gps.lng]).addTo(map).bindPopup('Lanternfly here').openPopup();
+      requestAnimationFrame(() => map?.invalidateSize());
+    } catch {
+      mapEl.style.display = 'none';
+      if (gps) locStatus.textContent = `✅ GPS captured (±${gps.acc}m) — map preview unavailable offline.`;
+    }
   }
 
-  const submitBtn = form.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
-  setMsg('Saving…', 'info');
-  try {
-    await dbReady;
-    const payload = {
-      stage, count, action,
-      lat: gps?.lat || null,
-      lng: gps?.lng || null,
-      place: place || null,
-      ...buildAiPayload(aiVerdict, yoloVerdict)
-    };
-    if (useCloud) {
-      const { error } = await sb.from('lantern_reports').insert([payload]);
-      if (error) throw new Error(error.message);
-      setMsg('✅ Report submitted successfully! Thanks for helping science.', 'success');
-    } else {
-      cache.unshift({ id: Date.now(), created_at: new Date().toISOString(), ...payload });
-      saveLocal(cache);
-      setMsg('💾 Saved locally on this device (cloud DB unreachable right now).', 'success');
-    }
-    form.reset();
-    REQUIRED_GROUPS.forEach(name => setGroupValidity(name, true));
-    clearPhotoState(true);
-    clearGpsState();
-    try { geminiKeyInput.value = localStorage.getItem('gemini_key') || ''; } catch {}
-  } catch (err) {
-    setMsg('❌ Submit failed: ' + err.message + ' — please check your network and try again.', 'error');
-  } finally {
-    submitBtn.disabled = false;
+  // ===== Image decoding & photo state =====
+  function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) resolve(img);
+        else reject(new Error('Image has empty dimensions.'));
+      };
+      img.onerror = () => reject(new Error('Could not decode selected image.'));
+      img.src = src;
+    });
   }
-});
+
+  async function getActivePhotoImage(file) {
+    if (photoURL && previewImg.complete && previewImg.naturalWidth > 0) return previewImg;
+    const tmpUrl = URL.createObjectURL(file);
+    try {
+      return await loadImageElement(tmpUrl);
+    } finally {
+      URL.revokeObjectURL(tmpUrl);
+    }
+  }
+
+  function clearPhotoState(resetInput = false, restoreFocus = false) {
+    photoSeq++;
+    if (photoURL) { URL.revokeObjectURL(photoURL); photoURL = null; }
+    if (resetInput) photoInput.value = '';
+    previewImg.onload = null;
+    previewImg.onerror = null;
+    previewImg.removeAttribute('src');
+    previewImg.style.display = 'none';
+    yoloCanvas.style.display = 'none';
+    clearPhotoBtn.hidden = true;
+    aiVerdict = null;
+    yoloVerdict = null;
+    yoloStatus.textContent = 'No detection yet.';
+    aiStatus.textContent = 'No AI check yet.';
+    if (restoreFocus) photoInput.focus();
+  }
+
+  photoInput.addEventListener('change', e => {
+    const f = e.target.files[0];
+    clearPhotoState(false);
+    if (!f) return;
+    if (f.type && !f.type.startsWith('image/')) {
+      clearPhotoState(true);
+      yoloStatus.textContent = '⚠️ Please choose an image file (JPG, PNG, WebP).';
+      return;
+    }
+    photoURL = URL.createObjectURL(f);
+    previewImg.onload = () => {
+      yoloCanvas.width = previewImg.naturalWidth;
+      yoloCanvas.height = previewImg.naturalHeight;
+    };
+    previewImg.onerror = () => {
+      clearPhotoState(true);
+      yoloStatus.textContent = '⚠️ Could not preview this image format in your browser (try JPG, PNG, or WebP).';
+    };
+    previewImg.src = photoURL;
+    previewImg.style.display = 'block';
+    clearPhotoBtn.hidden = false;
+    yoloStatus.textContent = 'Photo ready — press 🔎 Detect lanternflies (adults & nymphs).';
+    aiStatus.textContent = 'Photo ready — press 🤖 Identify photo for AI check (optional).';
+  });
+
+  clearPhotoBtn.addEventListener('click', () => clearPhotoState(true, true));
+
+  // ===== Gemini key storage & unmask toggle =====
+  geminiKeyInput.value = safeStorage.get(GEMINI_KEY_STORAGE);
+  const saveGeminiKey = () => safeStorage.set(GEMINI_KEY_STORAGE, geminiKeyInput.value.trim());
+  geminiKeyInput.addEventListener('input', saveGeminiKey);
+  geminiKeyInput.addEventListener('change', saveGeminiKey);
+
+  toggleKeyBtn.addEventListener('click', () => {
+    const shown = geminiKeyInput.type === 'text';
+    geminiKeyInput.type = shown ? 'password' : 'text';
+    toggleKeyBtn.textContent = shown ? 'Show' : 'Hide';
+    toggleKeyBtn.setAttribute('aria-pressed', String(!shown));
+    toggleKeyBtn.setAttribute('aria-label', shown ? 'Show Gemini API key' : 'Hide Gemini API key');
+  });
+
+  // ===== AI identify (Gemini Vision REST API) =====
+  async function downscaleToJpeg(file, maxSide = 768, quality = 0.8) {
+    const img = await getActivePhotoImage(file);
+    const iw = img.naturalWidth || img.width;
+    const ih = img.naturalHeight || img.height;
+    const s = Math.min(1, maxSide / Math.max(iw, ih));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(iw * s));
+    c.height = Math.max(1, Math.round(ih * s));
+    try {
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', quality).split(',')[1];
+    } finally {
+      c.width = 0;
+      c.height = 0;
+    }
+  }
+
+  aiBtn.addEventListener('click', async () => {
+    const key = geminiKeyInput.value.trim() || safeStorage.get(GEMINI_KEY_STORAGE).trim();
+    const file = photoInput.files[0];
+    if (!file) { aiStatus.textContent = '⚠️ Choose a photo first.'; return; }
+    if (!key) { aiStatus.textContent = '⚠️ Paste your free Gemini API key first (aistudio.google.com/apikey).'; geminiKeyInput.focus(); return; }
+    const seq = photoSeq;
+    setButtonBusy(aiBtn, true, '🤖 Identifying…');
+    aiStatus.textContent = '🤖 AI is looking… (sending to Gemini, ~5s)';
+    try {
+      const b64 = await downscaleToJpeg(file);
+      if (seq !== photoSeq) return;
+      const prompt = 'You are an entomology assistant. Is the insect or egg mass in this photo a spotted lanternfly (Lycorma delicatula)? Respond with JSON matching the schema: is_lanternfly (boolean), stage ("Adult" | "Nymph" | "Egg mass" | "Not a lanternfly"), confidence (integer 0-100), and note (one short sentence).';
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: 'image/jpeg', data: b64 } }
+            ]
+          }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseJsonSchema: {
+              type: 'object',
+              properties: {
+                is_lanternfly: { type: 'boolean' },
+                stage: { type: 'string', enum: ['Adult', 'Nymph', 'Egg mass', 'Not a lanternfly'] },
+                confidence: { type: 'integer', minimum: 0, maximum: 100 },
+                note: { type: 'string' }
+              },
+              required: ['is_lanternfly', 'stage', 'confidence', 'note'],
+              additionalProperties: false
+            },
+            thinkingConfig: { thinkingLevel: 'LOW' }
+          }
+        })
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error('Gemini HTTP ' + res.status + ': ' + t.slice(0, 160));
+      }
+      const j = await res.json();
+      if (seq !== photoSeq) return;
+      const candidate = j.candidates?.[0];
+      const parts = candidate?.content?.parts || [];
+      const txt = parts.filter(p => !p.thought && p.text).map(p => p.text).join('')
+        .replace(/^```json\s*|```$/g, '').trim();
+      if (!txt) {
+        throw new Error('Empty response from Gemini (' + (candidate?.finishReason || 'unknown') + ')');
+      }
+      const parsed = JSON.parse(txt);
+      aiVerdict = {
+        is_lanternfly: Boolean(parsed.is_lanternfly),
+        stage: typeof parsed.stage === 'string' ? parsed.stage : '',
+        confidence: clampPercent(parsed.confidence),
+        note: typeof parsed.note === 'string' ? parsed.note : ''
+      };
+      const statusLines = [{
+        prefix: aiVerdict.is_lanternfly ? '✅ ' : '❌ ',
+        bold: aiVerdict.is_lanternfly ? 'Likely a lanternfly' : 'Does not look like a lanternfly',
+        suffix: ` — ${aiVerdict.stage || '?'} (${aiVerdict.confidence}%)`
+      }];
+      if (aiVerdict.note) statusLines.push({ muted: true, text: aiVerdict.note });
+      const mapped = aiVerdict.is_lanternfly ? AI_STAGE_TO_Q1[aiVerdict.stage] : null;
+      if (mapped && autoSelectStage(mapped)) {
+        statusLines.push({
+          prefix: '👉 Q1 auto-filled as ',
+          bold: mapped,
+          suffix: ' — change it if you disagree.'
+        });
+      }
+      renderStatus(aiStatus, statusLines);
+    } catch (err) {
+      if (seq !== photoSeq) return;
+      aiVerdict = null;
+      aiStatus.textContent = '⚠️ AI check failed: ' + err.message + ' — you can still submit manually.';
+    } finally {
+      setButtonBusy(aiBtn, false);
+    }
+  });
+
+  // ===== YOLO detector — runs locally in browser (lazy-loaded onnxruntime-web) =====
+  // Model: models/best.onnx — YOLOv8n fine-tuned on 3.4k real annotated lanternfly photos (Roboflow)
+  // Classes: 0=Adult, 1=Early Nymph, 2=Late Nymph. Output: [1, 7, 8400] = (cx,cy,w,h, cls0,cls1,cls2)
+  async function loadYoloSession() {
+    if (yoloSession) return yoloSession;
+    if (yoloSessionPromise) return yoloSessionPromise;
+    yoloSessionPromise = (async () => {
+      await loadScript(CDN_ASSETS.ortJs.url, CDN_ASSETS.ortJs.integrity, 'ort');
+      if (!window.ort) throw new Error('onnxruntime-web failed to load (check network / CDN)');
+      ort.env.wasm.wasmPaths = CDN_ASSETS.ortWasmBase;
+      try {
+        yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ['webgpu', 'wasm'] });
+      } catch {
+        yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ['wasm'] });
+      }
+      return yoloSession;
+    })();
+    try {
+      return await yoloSessionPromise;
+    } catch (err) {
+      yoloSessionPromise = null;
+      throw err;
+    }
+  }
+
+  function letterbox(img, size) {
+    const imgW = img.naturalWidth || img.width;
+    const imgH = img.naturalHeight || img.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const s = Math.min(size / imgW, size / imgH);
+    const nw = imgW * s, nh = imgH * s;
+    const dx = (size - nw) / 2, dy = (size - nh) / 2;
+    ctx.fillStyle = 'rgb(114,114,114)';
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, dx, dy, nw, nh);
+    return { canvas, scale: s, dx, dy, imgW, imgH };
+  }
+
+  function decodeYoloBoxes(preds, channels, numPreds, confThr, scale, dx, dy, imgW, imgH) {
+    const numClasses = channels - 4;
+    const boxes = [];
+    for (let i = 0; i < numPreds; i++) {
+      let cls = 0, conf = -1;
+      for (let c = 0; c < numClasses; c++) {
+        const score = preds[(4 + c) * numPreds + i];
+        if (score > conf) { conf = score; cls = c; }
+      }
+      if (conf < confThr) continue;
+      const cx = (preds[0 * numPreds + i] - dx) / scale;
+      const cy = (preds[1 * numPreds + i] - dy) / scale;
+      const bw = preds[2 * numPreds + i] / scale;
+      const bh = preds[3 * numPreds + i] / scale;
+      const x1 = Math.max(0, cx - bw / 2);
+      const y1 = Math.max(0, cy - bh / 2);
+      const x2 = Math.min(imgW, cx + bw / 2);
+      const y2 = Math.min(imgH, cy + bh / 2);
+      const w = x2 - x1;
+      const h = y2 - y1;
+      if (w > 0 && h > 0) boxes.push({ x: x1, y: y1, w, h, conf, cls });
+    }
+    return boxes;
+  }
+
+  function nms(boxes, iouThr = 0.45) {
+    const sorted = [...boxes].sort((a, b) => b.conf - a.conf);
+    const keep = [];
+    while (sorted.length) {
+      const a = sorted.shift();
+      keep.push(a);
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        const b = sorted[i];
+        const ix = Math.max(a.x, b.x), iy = Math.max(a.y, b.y);
+        const iw = Math.min(a.x + a.w, b.x + b.w) - ix;
+        const ih = Math.min(a.y + a.h, b.y + b.h) - iy;
+        if (iw <= 0 || ih <= 0) continue;
+        const inter = iw * ih;
+        const uni = a.w * a.h + b.w * b.h - inter;
+        if (uni > 0 && inter / uni > iouThr) sorted.splice(i, 1);
+      }
+    }
+    return keep;
+  }
+
+  async function yoloInfer(img) {
+    const session = await loadYoloSession();
+    const { canvas, scale, dx, dy, imgW, imgH } = letterbox(img, YOLO_INPUT);
+    let data;
+    try {
+      data = canvas.getContext('2d').getImageData(0, 0, YOLO_INPUT, YOLO_INPUT).data;
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    const plane = YOLO_INPUT * YOLO_INPUT;
+    const input = new Float32Array(3 * plane);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      input[p] = data[i] / 255.0;
+      input[plane + p] = data[i + 1] / 255.0;
+      input[2 * plane + p] = data[i + 2] / 255.0;
+    }
+    const tensor = new ort.Tensor('float32', input, [1, 3, YOLO_INPUT, YOLO_INPUT]);
+    let out;
+    try {
+      out = await session.run({ images: tensor });
+      const output = out.output0;
+      const channels = output.dims?.[1] || 7;
+      const numPreds = output.dims?.[2] || (output.data.length / channels);
+      const boxes = decodeYoloBoxes(output.data, channels, numPreds, YOLO_CONF, scale, dx, dy, imgW, imgH);
+      return nms(boxes);
+    } finally {
+      tensor.dispose?.();
+      if (out) Object.values(out).forEach(t => t?.dispose?.());
+    }
+  }
+
+  function drawBoxes(boxes, img) {
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    yoloCanvas.width = w;
+    yoloCanvas.height = h;
+    yoloCanvas.style.display = 'block';
+    const ctx = yoloCanvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const scale = Math.max(1, Math.round(Math.max(w, h) / 600));
+    const lineW = Math.max(3, scale * 3);
+    const fontSize = Math.max(14, scale * 16);
+    const pad = Math.max(4, scale * 4);
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+
+    boxes.forEach(b => {
+      ctx.strokeStyle = '#ff3b30';
+      ctx.lineWidth = lineW;
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      const label = (b.conf * 100).toFixed(0) + '% ' + YOLO_CLASSES[b.cls].replace(' Spotted Lanternfly', '');
+      const tw = ctx.measureText(label).width;
+      const th = fontSize + pad * 2;
+      const tx = Math.max(0, Math.min(b.x, w - tw - pad * 2));
+      const ty = b.y > th + 2 ? b.y - th : Math.min(h - th, b.y + 2);
+      ctx.fillStyle = 'rgba(255, 59, 48, 0.9)';
+      ctx.fillRect(tx, ty, tw + pad * 2, th);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, tx + pad, ty + pad);
+    });
+    previewImg.style.display = 'none';
+  }
+
+  yoloBtn.addEventListener('click', async () => {
+    const file = photoInput.files[0];
+    if (!file) { yoloStatus.textContent = '⚠️ Choose a photo first.'; return; }
+    const seq = photoSeq;
+    setButtonBusy(yoloBtn, true, '⏳ Detecting…');
+    yoloStatus.textContent = '⏳ Loading YOLO model (first run ~10s) + detecting…';
+    try {
+      const img = await getActivePhotoImage(file);
+      const boxes = await yoloInfer(img);
+      if (seq !== photoSeq) return;
+      if (!boxes.length) {
+        yoloVerdict = { is_lanternfly: false, confidence: 0, stage: null, count: 0 };
+        yoloCanvas.style.display = 'none';
+        previewImg.style.display = 'block';
+        renderStatus(yoloStatus, [{
+          prefix: '❌ ',
+          bold: 'No adult/nymph lanternfly detected',
+          suffix: ` (conf ≥ ${YOLO_CONF * 100}%) — if this is an egg mass or unclear angle, select Q1 manually or try AI check.`
+        }]);
+        return;
+      }
+      const best = boxes[0];
+      const stage = YOLO_CLASSES[best.cls];
+      yoloVerdict = { is_lanternfly: true, confidence: best.conf, stage, count: boxes.length };
+      drawBoxes(boxes, img);
+      const lines = [
+        { prefix: '✅ ', bold: 'Lanternfly detected', suffix: ` — ${stage} (${(best.conf * 100).toFixed(1)}%)` },
+        { prefix: `🔢 ${boxes.length} box(es) found. Submit to store the result.` }
+      ];
+      const q1val = YOLO_STAGE_TO_Q1[stage];
+      if (q1val && autoSelectStage(q1val)) {
+        lines.push({
+          prefix: '👉 Q1 auto-filled as ',
+          bold: q1val,
+          suffix: ' — change it if you disagree.'
+        });
+      }
+      renderStatus(yoloStatus, lines);
+    } catch (err) {
+      if (seq !== photoSeq) return;
+      yoloVerdict = null;
+      yoloStatus.textContent = '⚠️ YOLO check failed: ' + err.message + ' — you can still submit manually.';
+    } finally {
+      setButtonBusy(yoloBtn, false);
+    }
+  });
+
+  // ===== Shared cloud DB (Supabase) + local fallback =====
+  function saveLocal(reports) {
+    safeStorage.set(LOCAL_REPORTS_KEY, JSON.stringify(reports.slice(0, 200)));
+  }
+
+  function loadLocal() {
+    try {
+      const parsed = JSON.parse(safeStorage.get(LOCAL_REPORTS_KEY, '[]'));
+      cache = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      cache = [];
+    }
+  }
+
+  async function initDB() {
+    setDbStatus('⏳ Connecting to shared cloud DB…');
+    if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) {
+      loadLocal();
+      setDbStatus('💾 Local demo mode — shared DB not configured.');
+      return;
+    }
+    try {
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      // Prefer insert-safe health RPC; fall back to head select if older schema is deployed
+      const { error: rpcErr } = await sb.rpc('lantern_db_health');
+      if (rpcErr) {
+        const msg = (rpcErr.message || '').toLowerCase();
+        if (rpcErr.code === 'PGRST202' || msg.includes('lantern_db_health')) {
+          const { error } = await sb.from('lantern_reports').select('id', { count: 'exact', head: true });
+          if (error) throw error;
+        } else {
+          throw rpcErr;
+        }
+      }
+      useCloud = true;
+      setDbStatus('☁️ Shared cloud DB connected — every submission syncs for everyone.');
+    } catch {
+      loadLocal();
+      setDbStatus('💾 Local demo mode — cloud DB not reachable right now.');
+    }
+  }
+
+  let resolveDbReady;
+  const dbReady = new Promise(resolve => { resolveDbReady = resolve; });
+  const startDbInit = () => initDB().finally(resolveDbReady);
+  if (document.readyState === 'complete') startDbInit();
+  else window.addEventListener('DOMContentLoaded', startDbInit, { once: true });
+
+  function clampPercent(v) {
+    return Math.max(0, Math.min(100, Math.round(parseFloat(v) || 0)));
+  }
+
+  function buildAiPayload(ai, yolo) {
+    if (!ai && !yolo) return {};
+    if (ai && !yolo) {
+      return {
+        ai_is_lanternfly: Boolean(ai.is_lanternfly),
+        ai_stage: ai.stage || null,
+        ai_confidence: clampPercent(ai.confidence),
+        ai_note: ai.note || null
+      };
+    }
+    if (!ai && yolo) {
+      const conf = clampPercent(yolo.confidence * 100);
+      return {
+        ai_is_lanternfly: Boolean(yolo.is_lanternfly),
+        ai_stage: yolo.stage || (yolo.is_lanternfly ? 'lanternfly x' + yolo.count : 'No adult/nymph detected'),
+        ai_confidence: conf,
+        ai_note: 'YOLO nano browser (Roboflow-trained): ' + (yolo.count ? yolo.count + ' box(es)' : '0 boxes >= 70%')
+      };
+    }
+    const yoloConf = clampPercent(yolo.confidence * 100);
+    const gemConf = clampPercent(ai.confidence);
+    const isLanternfly = Boolean(yolo.is_lanternfly || ai.is_lanternfly);
+    const stage = yolo.is_lanternfly ? (yolo.stage || ai.stage || null) : (ai.stage || null);
+    const confidence = yolo.is_lanternfly
+      ? (ai.is_lanternfly ? Math.max(yoloConf, gemConf) : yoloConf)
+      : gemConf;
+    const yoloSummary = yolo.is_lanternfly ? `${yolo.stage} (${yoloConf}%, ${yolo.count} box)` : 'none >= 70%';
+    const gemSummary = `${ai.is_lanternfly ? 'yes' : 'no'} (${ai.stage || '?'}, ${gemConf}%)`;
+    return {
+      ai_is_lanternfly: isLanternfly,
+      ai_stage: stage,
+      ai_confidence: confidence,
+      ai_note: `YOLO: ${yoloSummary} | Gemini: ${gemSummary}${ai.note ? ' — ' + ai.note : ''}`
+    };
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const d = new FormData(form);
+    const stage = d.get('stage'), count = d.get('count'), action = d.get('action');
+    const place = placeInput.value.trim();
+
+    let firstInvalid = null;
+    REQUIRED_GROUPS.forEach(name => {
+      const valid = Boolean(d.get(name));
+      setGroupValidity(name, valid);
+      if (!valid && !firstInvalid) firstInvalid = document.querySelector('#fs-' + name + ' input[type="radio"]');
+    });
+    if (firstInvalid) {
+      setMsg('⚠️ Please answer Q1–Q3 before submitting.', 'error');
+      firstInvalid.focus();
+      return;
+    }
+
+    setButtonBusy(submitBtn, true, 'Saving…');
+    setMsg('Saving…', 'info');
+    try {
+      await dbReady;
+      const payload = {
+        stage,
+        count,
+        action,
+        lat: gps?.lat || null,
+        lng: gps?.lng || null,
+        place: place || null,
+        ...buildAiPayload(aiVerdict, yoloVerdict)
+      };
+      if (useCloud) {
+        const { error } = await sb.from('lantern_reports').insert([payload]);
+        if (error) throw new Error(error.message);
+        setMsg('✅ Report submitted successfully! Thanks for helping science.', 'success');
+      } else {
+        cache.unshift({ id: Date.now(), created_at: new Date().toISOString(), ...payload });
+        saveLocal(cache);
+        setMsg('💾 Saved locally on this device (cloud DB unreachable right now).', 'success');
+      }
+      const preservedKey = geminiKeyInput.value;
+      form.reset();
+      REQUIRED_GROUPS.forEach(name => setGroupValidity(name, true));
+      clearPhotoState(true, false);
+      clearGpsState(false);
+      geminiKeyInput.value = preservedKey || safeStorage.get(GEMINI_KEY_STORAGE);
+    } catch (err) {
+      setMsg('❌ Submit failed: ' + err.message + ' — please check your network and try again.', 'error');
+    } finally {
+      setButtonBusy(submitBtn, false);
+    }
+  });
+})();
 </script>
 </body>
 </html>
