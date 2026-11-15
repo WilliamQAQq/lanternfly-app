@@ -8,7 +8,7 @@ A tiny citizen-science web app that lets anyone report a spotted lanternfly sigh
 
 - **3 quick questions** — What did you see? (Adult / Nymph / Egg mass) · How many? · How do you handle it?
 - **Optional GPS** — one tap to share coordinates with researchers (shown locally on a Leaflet map; not publicly readable from the database)
-- **Optional photo + On-device YOLO** — runs `models/best.onnx` directly in the browser via `onnxruntime-web` (WebGPU / WASM) to detect Adult, Early Nymph, and Late Nymph stages with bounding boxes; photos never leave the device
+- **Optional photo + On-device YOLO** — runs `models/best.onnx` directly in the browser via `onnxruntime-web` (WASM) to detect Adult, Early Nymph, and Late Nymph stages with bounding boxes; photos never leave the device
 - **Optional AI check (Gemini Vision)** — uses `gemini-3.8-flash` (including Egg mass identification) with the user's own API key stored only in browser `localStorage`
 - **Shared cloud DB** — submissions go to a Supabase Postgres table (`INSERT`-only for anonymous users)
 - **Offline fallback** — if the cloud DB is unreachable, reports are saved locally in `localStorage`

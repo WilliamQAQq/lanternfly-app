@@ -286,6 +286,13 @@
     if (code === '23514' || code === '23502' || code.startsWith('22') || code === 'PGRST102') {
       return 'permanent';
     }
+    // For anon, the INSERT policy's WITH CHECK runs before table CHECK constraints, so an invalid row
+    // surfaces as 42501 "new row violates row-level security policy". Treat that as a permanent row
+    // rejection, but keep generic "permission denied" (missing GRANT / misconfiguration) transient so
+    // queued reports are retained until the backend is fixed.
+    if (code === '42501' && msg.includes('row-level security')) {
+      return 'permanent';
+    }
     return 'transient';
   }
 
@@ -991,6 +998,20 @@
     return safeStorage.set(LOCAL_REPORTS_KEY, JSON.stringify(items.slice(0, MAX_PENDING_QUEUE)));
   }
 
+  // One-time upgrade: reports queued by older app versions have no client_id, so a retry after a lost
+  // response could insert them twice. Stamp them with a stable UUID before the first sync attempt.
+  function migrateLegacyQueue() {
+    const queue = readQueue();
+    let changed = false;
+    const upgraded = queue.map(item => {
+      if (typeof item.client_id === 'string' && UUID_RE.test(item.client_id)) return item;
+      const cid = generateClientId();
+      changed = true;
+      return { ...item, client_id: cid, _qid: item._qid || cid };
+    });
+    if (changed) writeQueue(upgraded);
+  }
+
   function appendFailedReports(newlyFailed) {
     if (!newlyFailed.length) return;
     try {
@@ -1167,6 +1188,7 @@
 
   let resolveDbReady;
   const dbReady = new Promise(resolve => { resolveDbReady = resolve; });
+  try { migrateLegacyQueue(); } catch {}
   const startDbInit = () => initDB().finally(resolveDbReady);
   if (document.readyState === 'complete') startDbInit();
   else window.addEventListener('DOMContentLoaded', startDbInit, { once: true });

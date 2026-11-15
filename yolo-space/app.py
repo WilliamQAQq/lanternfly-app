@@ -46,16 +46,23 @@ def api_predict(img: Image.Image | None) -> dict[str, list[dict[str, Any]]]:
 
 with gr.Blocks(title="Spot-a-Lanternfly — YOLO") as demo:
     gr.Markdown("# Spot-a-Lanternfly — YOLO Detector\nDetects spotted lanternflies (Adult / Early Nymph / Late Nymph) and returns bounding boxes + confidence.")
+    img_input = gr.Image(type="pil", label="Upload photo", render=False)
+    dets_output = gr.JSON(label="Detections", render=False)
+    ann_output = gr.Image(type="numpy", label="Annotated", render=False)
     gr.Interface(
         fn=predict,
-        inputs=gr.Image(type="pil", label="Upload photo"),
-        outputs=[
-            gr.JSON(label="Detections"),
-            gr.Image(type="numpy", label="Annotated"),
-        ],
+        inputs=img_input,
+        outputs=[dets_output, ann_output],
         flagging_mode="never",
     )
-    gr.api(api_predict, api_name="yolo_detect")
+    # Bind via gr.Image/gr.JSON components so Gradio preprocesses uploaded files/URLs into PIL.Image (unlike gr.api)
+    gr.on(
+        triggers=[],
+        fn=api_predict,
+        inputs=img_input,
+        outputs=dets_output,
+        api_name="yolo_detect",
+    )
 
 if __name__ == "__main__":
     demo.launch()
