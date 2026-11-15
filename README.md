@@ -16,7 +16,7 @@ A tiny citizen-science web app that lets anyone report a spotted lanternfly sigh
 
 ## Tech stack
 
-- **Frontend:** single-file `index.html` (no build step) — HTML/CSS/JS + Leaflet map
+- **Frontend:** `index.html` + `app.js` (no build step) — semantic HTML/CSS/JS + Leaflet map
 - **On-device ML:** `onnxruntime-web` (`1.20.1`) + `models/best.onnx` (YOLOv8n, 3 classes, 640×640 input)
 - **AI (optional):** Google Gemini Vision (`gemini-3.8-flash`) — user pastes their own API key, stored only in their browser
 - **Backend:** Supabase (Postgres + REST API) with Row-Level Security (`INSERT`-only for `anon` + `lantern_db_health()` RPC)
@@ -30,11 +30,12 @@ Table: `lantern_reports`
 |---|---|---|
 | `id` | bigint | auto |
 | `created_at` | timestamptz | auto |
+| `client_id` | uuid | client-generated UUID with unique index for idempotent offline-sync deduplication |
 | `stage` | text | Adult / Nymph / Egg mass / Not sure |
 | `count` | text | 1 / 2-10 / 10+ |
 | `action` | text | Killed it / Photo only / Just watched |
-| `lat`, `lng` | text | optional GPS |
-| `place` | text | optional free-text place name |
+| `lat`, `lng` | text | optional GPS (numeric range checked; paired) |
+| `place` | text | optional free-text place name (max 200 chars) |
 | `ai_is_lanternfly`, `ai_stage`, `ai_confidence`, `ai_note` | — | optional YOLO / Gemini verdict |
 
 Schema: [`supabase-schema.sql`](supabase-schema.sql) · Legacy AI migration: [`supabase-migration-ai.sql`](supabase-migration-ai.sql)
@@ -52,9 +53,10 @@ Schema: [`supabase-schema.sql`](supabase-schema.sql) · Legacy AI migration: [`s
 
 ## Privacy & security notes
 
-- `supabase-schema.sql` restricts anonymous visitors to `INSERT`-only and checks connectivity via `lantern_db_health()` RPC; public `SELECT` and `DELETE` are disabled so exact GPS coordinates cannot be queried publicly and rows cannot be deleted by visitors.
-- The Gemini API key stays in the visitor's browser `localStorage` and is sent directly to Google's API, never to Supabase.
+- `supabase-schema.sql` restricts anonymous visitors to `INSERT`-only and checks connectivity via a `security invoker` `lantern_db_health()` RPC; public `SELECT` and `DELETE` are disabled so exact GPS coordinates cannot be queried publicly and rows cannot be deleted by visitors. Named `CHECK` constraints enforce allowed values even for privileged writers.
+- The Gemini API key stays in the visitor's browser `localStorage` and is sent directly to Google's API (`x-goog-api-key` header), never to Supabase.
 - Never commit a Supabase *secret* key (`sb_secret_...`) — only the publishable anon key belongs in the frontend.
+- **CSP & framing platform note:** Because GitHub Pages static hosting does not allow custom HTTP response headers, Content Security Policy is enforced via `<meta http-equiv="Content-Security-Policy">` in `index.html`. Per the CSP specification, `frame-ancestors` (and `X-Frame-Options`) cannot be enforced via `<meta>` tags; add HTTP response headers via a reverse proxy/CDN if framing must be blocked at the header level.
 
 ## Repo layout
 

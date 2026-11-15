@@ -20,7 +20,9 @@
   const ALLOWED_STAGES = new Set(['Adult', 'Nymph', 'Egg mass', 'Not sure']);
   const ALLOWED_COUNTS = new Set(['1', '2-10', '10+']);
   const ALLOWED_ACTIONS = new Set(['Killed it', 'Photo only', 'Just watched']);
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const DB_COLUMNS = [
+    'client_id',
     'stage',
     'count',
     'action',
@@ -37,8 +39,15 @@
   const SUPABASE_ANON_KEY = 'sb_publishable_KMKic67K9tx7TGTPmhHXyg_D7dn6CIq';
   const GEMINI_KEY_STORAGE = 'gemini_key';
   const LOCAL_REPORTS_KEY = 'lantern_reports';
+  const FAILED_REPORTS_KEY = 'lantern_reports_failed';
+  const MAX_PENDING_QUEUE = 500;
+  const MAX_FAILED_QUEUE = 20;
 
   const CDN_ASSETS = {
+    supabaseJs: {
+      url: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js',
+      integrity: 'sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O'
+    },
     leafletCss: {
       url: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
       integrity: 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'
@@ -165,6 +174,21 @@
     return num.toFixed(6);
   }
 
+  function generateClientId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    }
+    throw new Error('Secure random UUID generator is unavailable.');
+  }
+
   function validateReportPayload(raw) {
     if (!raw || typeof raw !== 'object') {
       throw new Error('Invalid report payload.');
@@ -187,6 +211,11 @@
       lng: lat && lng ? lng : null,
       place: placeClean || null
     };
+    if (raw.client_id !== undefined && raw.client_id !== null && raw.client_id !== '') {
+      const cid = String(raw.client_id).trim().toLowerCase();
+      if (!UUID_RE.test(cid)) throw new Error('Invalid client report ID.');
+      out.client_id = cid;
+    }
     if (typeof raw.ai_is_lanternfly === 'boolean') {
       out.ai_is_lanternfly = raw.ai_is_lanternfly;
       out.ai_stage = raw.ai_stage ? String(raw.ai_stage).slice(0, 64) : null;
@@ -204,6 +233,60 @@
     return validateReportPayload(row);
   }
 
+  function getReportQueueKey(entry, fallbackIdx = 0) {
+    if (!entry || typeof entry !== 'object') return `invalid-${fallbackIdx}`;
+    if (typeof entry.client_id === 'string' && entry.client_id) return entry.client_id.toLowerCase();
+    if (entry._qid !== undefined && entry._qid !== null && entry._qid !== '') return String(entry._qid);
+    if (entry.id !== undefined && entry.id !== null) return `legacy-${entry.id}`;
+    return `idx-${fallbackIdx}-${entry.created_at || ''}`;
+  }
+
+  function reconcileQueue(latestQueue, syncedKeys, failedErrorsByKey) {
+    const syncedSet = syncedKeys instanceof Set ? syncedKeys : new Set(syncedKeys || []);
+    const failedMap = failedErrorsByKey instanceof Map
+      ? failedErrorsByKey
+      : new Map(Object.entries(failedErrorsByKey || {}));
+    const pending = [];
+    const newlyFailed = [];
+    latestQueue.forEach((item, idx) => {
+      if (!item || typeof item !== 'object' || item.synced === true) return;
+      const key = getReportQueueKey(item, idx);
+      if (syncedSet.has(key)) return;
+      if (failedMap.has(key)) {
+        newlyFailed.push({
+          ...item,
+          failed: true,
+          failed_at: new Date().toISOString(),
+          last_error: failedMap.get(key)
+        });
+        return;
+      }
+      if (item.failed === true) {
+        newlyFailed.push(item);
+        return;
+      }
+      pending.push(item);
+    });
+    return { pending, newlyFailed };
+  }
+
+  function classifyCloudError(error, hasClientId = false) {
+    if (!error) return 'inserted';
+    const code = String(error.code || '');
+    const msg = String(error.message || '').toLowerCase();
+    if (hasClientId && ((code === 'PGRST204' && msg.includes('client_id')) || (code === '42703' && msg.includes('client_id')))) {
+      return 'retry_without_client_id';
+    }
+    if (hasClientId && code === '23505') {
+      return 'already_synced';
+    }
+    // Permanent row-level validation/constraint errors (CHECK, NOT NULL, truncation, bad scalar syntax)
+    if (code === '23514' || code === '23502' || code.startsWith('22') || code === 'PGRST102') {
+      return 'permanent';
+    }
+    return 'transient';
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       YOLO_CONF,
@@ -212,8 +295,12 @@
       decodeYoloBoxes,
       nms,
       buildAiPayload,
+      generateClientId,
       validateReportPayload,
-      extractDbColumns
+      extractDbColumns,
+      getReportQueueKey,
+      reconcileQueue,
+      classifyCloudError
     };
   }
 
@@ -228,7 +315,8 @@
   let yoloVerdict = null; // {is_lanternfly, confidence, stage, count}
   let yoloSession = null;
   let yoloSessionPromise = null;
-  let useCloud = false, sb = null, cache = [], isFlushing = false;
+  let useCloud = false, sb = null, supportsClientId = true;
+  let initDbPromise = null, flushPromise = null;
 
   const assetPromises = new Map();
   const form = document.getElementById('form');
@@ -256,7 +344,12 @@
       try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
     },
     set(key, value) {
-      try { localStorage.setItem(key, value); } catch {}
+      try {
+        localStorage.setItem(key, value);
+        return true;
+      } catch {
+        return false;
+      }
     }
   };
 
@@ -817,85 +910,189 @@
   });
 
   // ===== Shared cloud DB (Supabase) + offline queue with auto-sync =====
-  function saveLocal(reports) {
-    safeStorage.set(LOCAL_REPORTS_KEY, JSON.stringify(reports.slice(0, 200)));
-  }
-
-  function loadLocal() {
+  function readQueue() {
     try {
       const parsed = JSON.parse(safeStorage.get(LOCAL_REPORTS_KEY, '[]'));
-      cache = Array.isArray(parsed) ? parsed : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(item => item && typeof item === 'object' && item.synced !== true && item.failed !== true);
     } catch {
-      cache = [];
+      return [];
     }
+  }
+
+  function writeQueue(items) {
+    return safeStorage.set(LOCAL_REPORTS_KEY, JSON.stringify(items.slice(0, MAX_PENDING_QUEUE)));
+  }
+
+  function appendFailedReports(newlyFailed) {
+    if (!newlyFailed.length) return;
+    try {
+      const existing = JSON.parse(safeStorage.get(FAILED_REPORTS_KEY, '[]'));
+      const list = Array.isArray(existing) ? existing : [];
+      const combined = [...list, ...newlyFailed].slice(-MAX_FAILED_QUEUE);
+      safeStorage.set(FAILED_REPORTS_KEY, JSON.stringify(combined));
+    } catch {}
   }
 
   function enqueueLocalReport(payload) {
-    loadLocal();
-    cache.unshift({
-      id: Date.now(),
+    const queue = readQueue();
+    if (queue.length >= MAX_PENDING_QUEUE) {
+      return { ok: false, reason: 'queue_full' };
+    }
+    const qid = payload.client_id || generateClientId();
+    if (queue.some((item, idx) => getReportQueueKey(item, idx) === qid)) {
+      return { ok: true, count: queue.length };
+    }
+    const next = [...queue, {
+      _qid: qid,
       created_at: new Date().toISOString(),
-      synced: false,
       ...payload
-    });
-    saveLocal(cache);
+    }];
+    if (!writeQueue(next)) {
+      return { ok: false, reason: 'storage_error' };
+    }
+    return { ok: true, count: next.length };
+  }
+
+  async function insertReportToCloud(row) {
+    if (!sb) throw new Error('Supabase client not initialized.');
+    const sendRow = supportsClientId ? row : (() => {
+      const { client_id: _ignored, ...rest } = row;
+      return rest;
+    })();
+    // Plain INSERT (not upsert/ON CONFLICT) preserves strict INSERT-only RLS without requiring public SELECT.
+    // Idempotent deduplication relies on client_id UUID + UNIQUE index catching retries with SQLSTATE 23505.
+    const { error } = await sb.from('lantern_reports').insert([sendRow]);
+    if (!error) return { status: 'inserted' };
+
+    const kind = classifyCloudError(error, Boolean(sendRow.client_id));
+    if (kind === 'retry_without_client_id') {
+      supportsClientId = false;
+      const { client_id: _ignored, ...fallbackRow } = row;
+      const retry = await sb.from('lantern_reports').insert([fallbackRow]);
+      if (!retry.error) return { status: 'inserted' };
+      return { status: classifyCloudError(retry.error, false), error: retry.error };
+    }
+    return { status: kind, error };
   }
 
   async function flushPendingReports() {
-    if (!sb || isFlushing) return 0;
-    loadLocal();
-    const pending = cache.filter(item => item && item.synced === false);
-    if (!pending.length) return 0;
-    isFlushing = true;
-    let syncedCount = 0;
-    try {
-      for (const item of pending) {
-        try {
-          const row = extractDbColumns(item);
-          const { error } = await sb.from('lantern_reports').insert([row]);
-          if (error) break;
-          item.synced = true;
-          syncedCount++;
-        } catch {
-          break;
+    if (!sb) return { synced: 0, failed: 0, remaining: readQueue().length };
+    if (flushPromise) return flushPromise;
+    flushPromise = (async () => {
+      let totalSynced = 0;
+      let totalFailed = 0;
+      let syncedInPass = 0;
+      let hitTransient = false;
+      do {
+        syncedInPass = 0;
+        hitTransient = false;
+        const batch = readQueue();
+        if (!batch.length) break;
+        const syncedKeys = new Set();
+        const failedErrors = new Map();
+        for (let i = 0; i < batch.length; i++) {
+          const item = batch[i];
+          const key = getReportQueueKey(item, i);
+          let row;
+          try {
+            row = extractDbColumns(item);
+          } catch (err) {
+            failedErrors.set(key, err?.message || 'Invalid queued report');
+            continue;
+          }
+          try {
+            const res = await insertReportToCloud(row);
+            if (res.status === 'inserted' || res.status === 'already_synced') {
+              syncedKeys.add(key);
+              syncedInPass++;
+              totalSynced++;
+            } else if (res.status === 'permanent') {
+              failedErrors.set(key, res.error?.message || res.error?.code || 'Rejected by database');
+            } else {
+              hitTransient = true;
+              break;
+            }
+          } catch {
+            hitTransient = true;
+            break;
+          }
         }
+        if (syncedKeys.size > 0 || failedErrors.size > 0) {
+          const { pending, newlyFailed } = reconcileQueue(readQueue(), syncedKeys, failedErrors);
+          writeQueue(pending);
+          if (newlyFailed.length > 0) {
+            totalFailed += newlyFailed.length;
+            appendFailedReports(newlyFailed);
+          }
+        }
+      } while (syncedInPass > 0 && !hitTransient && readQueue().length > 0);
+
+      const remaining = readQueue().length;
+      if (totalSynced > 0 && remaining === 0) {
+        setDbStatus(`☁️ Shared cloud DB connected — synced ${totalSynced} offline report(s).`);
+      } else if (remaining > 0) {
+        setDbStatus(`💾 Offline queue active — ${remaining} pending report(s) waiting to sync.`);
+      } else if (totalFailed > 0) {
+        setDbStatus(`☁️ Shared cloud DB connected (${totalFailed} invalid queued entry skipped).`);
       }
-      if (syncedCount > 0) {
-        saveLocal(cache);
-        setDbStatus(`☁️ Shared cloud DB connected — synced ${syncedCount} offline report(s).`);
-      }
+      return { synced: totalSynced, failed: totalFailed, remaining };
+    })();
+    try {
+      return await flushPromise;
     } finally {
-      isFlushing = false;
+      flushPromise = null;
     }
-    return syncedCount;
   }
 
   async function initDB() {
-    loadLocal();
-    setDbStatus('⏳ Connecting to shared cloud DB…');
-    if (SUPABASE_URL.startsWith('YOUR_') || !window.supabase) {
-      setDbStatus('💾 Local demo mode — shared DB not configured.');
-      return;
-    }
-    try {
-      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      // Prefer insert-safe health RPC; fall back to head select if older schema is deployed
-      const { error: rpcErr } = await sb.rpc('lantern_db_health');
-      if (rpcErr) {
-        const msg = (rpcErr.message || '').toLowerCase();
-        if (rpcErr.code === 'PGRST202' || msg.includes('lantern_db_health')) {
-          const { error } = await sb.from('lantern_reports').select('id', { count: 'exact', head: true });
-          if (error) throw error;
-        } else {
-          throw rpcErr;
-        }
+    if (initDbPromise) return initDbPromise;
+    initDbPromise = (async () => {
+      const pendingAtStart = readQueue().length;
+      setDbStatus('⏳ Connecting to shared cloud DB…');
+      if (SUPABASE_URL.startsWith('YOUR_')) {
+        setDbStatus('💾 Local demo mode — shared DB not configured.');
+        return false;
       }
-      useCloud = true;
-      setDbStatus('☁️ Shared cloud DB connected — every submission syncs for everyone.');
-      await flushPendingReports();
-    } catch {
-      useCloud = false;
-      setDbStatus('💾 Local demo mode — cloud DB not reachable right now.');
+      try {
+        if (!window.supabase && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+          await loadScript(CDN_ASSETS.supabaseJs.url, CDN_ASSETS.supabaseJs.integrity, 'supabase');
+        }
+        if (!window.supabase) {
+          throw new Error('Supabase SDK unavailable');
+        }
+        if (!sb) {
+          sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        // Prefer insert-safe health RPC; fall back to head select if older schema is deployed
+        const { error: rpcErr } = await sb.rpc('lantern_db_health');
+        if (rpcErr) {
+          const msg = (rpcErr.message || '').toLowerCase();
+          if (rpcErr.code === 'PGRST202' || msg.includes('lantern_db_health')) {
+            const { error } = await sb.from('lantern_reports').select('id', { count: 'exact', head: true });
+            if (error) throw error;
+          } else {
+            throw rpcErr;
+          }
+        }
+        useCloud = true;
+        setDbStatus('☁️ Shared cloud DB connected — every submission syncs for everyone.');
+        await flushPendingReports();
+        return true;
+      } catch {
+        useCloud = false;
+        setDbStatus(
+          pendingAtStart > 0
+            ? `💾 Offline mode — ${pendingAtStart} pending report(s) queued to sync when online.`
+            : '💾 Local demo mode — cloud DB not reachable right now.'
+        );
+        return false;
+      }
+    })();
+    try {
+      return await initDbPromise;
+    } finally {
+      initDbPromise = null;
     }
   }
 
@@ -905,13 +1102,14 @@
   if (document.readyState === 'complete') startDbInit();
   else window.addEventListener('DOMContentLoaded', startDbInit, { once: true });
 
-  window.addEventListener('online', () => {
+  window.addEventListener('online', async () => {
+    if (initDbPromise) await initDbPromise;
+    if (!sb || !useCloud) {
+      await initDB();
+    }
     if (sb) {
-      flushPendingReports().then(count => {
-        if (count > 0) useCloud = true;
-      });
-    } else {
-      initDB();
+      const { synced } = await flushPendingReports();
+      if (synced > 0) useCloud = true;
     }
   });
 
@@ -937,7 +1135,11 @@
     setMsg('Saving…', 'info');
     try {
       await dbReady;
+      if (!sb && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        await initDB();
+      }
       const payload = validateReportPayload({
+        client_id: generateClientId(),
         stage,
         count,
         action,
@@ -949,12 +1151,19 @@
 
       let savedToCloud = false;
       if (sb) {
-        const { error } = await sb.from('lantern_reports').insert([payload]);
-        if (!error) {
-          savedToCloud = true;
-          useCloud = true;
-          flushPendingReports();
-        } else {
+        try {
+          const res = await insertReportToCloud(payload);
+          if (res.status === 'inserted' || res.status === 'already_synced') {
+            savedToCloud = true;
+            useCloud = true;
+            flushPendingReports();
+          } else if (res.status === 'permanent') {
+            setMsg('❌ Report rejected by database: ' + (res.error?.message || 'invalid data'), 'error');
+            return;
+          } else {
+            useCloud = false;
+          }
+        } catch {
           useCloud = false;
         }
       }
@@ -962,9 +1171,17 @@
       if (savedToCloud) {
         setMsg('✅ Report submitted successfully! Thanks for helping science.', 'success');
       } else {
-        enqueueLocalReport(payload);
+        const queued = enqueueLocalReport(payload);
+        if (!queued.ok) {
+          const reason = queued.reason === 'queue_full'
+            ? 'offline queue is full (500 pending reports)'
+            : 'browser storage is full or blocked';
+          setMsg(`❌ Cloud DB is unreachable and ${reason} — report could NOT be saved. Your inputs were kept.`, 'error');
+          setDbStatus('⚠️ Offline save failed — free browser storage or reconnect to submit.');
+          return;
+        }
         setMsg('💾 Saved on this device (cloud DB unreachable — will auto-sync when online).', 'success');
-        setDbStatus('💾 Offline queue active — pending report(s) will sync when online.');
+        setDbStatus(`💾 Offline queue active — ${queued.count} pending report(s) will sync when online.`);
       }
 
       const preservedKey = geminiKeyInput.value;
