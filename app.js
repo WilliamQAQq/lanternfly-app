@@ -3,6 +3,8 @@
 
   const GEMINI_MODEL = 'gemini-3.8-flash';
   const GEMINI_TIMEOUT_MS = 30000;
+  const SUPABASE_TIMEOUT_MS = 15000;
+  const ASSET_TIMEOUT_MS = 20000;
   const YOLO_MODEL_URL = 'models/best.onnx';
   const YOLO_INPUT = 640;
   const YOLO_CONF = 0.7;
@@ -287,6 +289,51 @@
     return 'transient';
   }
 
+  function createTimeoutSignal(ms) {
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      return { signal: AbortSignal.timeout(ms), cleanup: () => {} };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), ms);
+    return { signal: controller.signal, cleanup: () => clearTimeout(timer) };
+  }
+
+  function createTimedFetch(ms = SUPABASE_TIMEOUT_MS, baseFetch = globalThis.fetch) {
+    return async (input, init) => {
+      const opts = init || {};
+      const { signal: timeoutSignal, cleanup } = createTimeoutSignal(ms);
+      let combinedSignal = timeoutSignal;
+      const callerSignal = opts.signal || (typeof Request !== 'undefined' && input instanceof Request ? input.signal : null);
+      let onCallerAbort = null;
+      let onTimeoutAbort = null;
+      if (callerSignal) {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
+          combinedSignal = AbortSignal.any([callerSignal, timeoutSignal]);
+        } else {
+          const controller = new AbortController();
+          if (callerSignal.aborted) {
+            controller.abort(callerSignal.reason);
+          } else if (timeoutSignal.aborted) {
+            controller.abort(timeoutSignal.reason);
+          } else {
+            onCallerAbort = () => controller.abort(callerSignal.reason);
+            onTimeoutAbort = () => controller.abort(timeoutSignal.reason);
+            callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+            timeoutSignal.addEventListener('abort', onTimeoutAbort, { once: true });
+          }
+          combinedSignal = controller.signal;
+        }
+      }
+      try {
+        return await baseFetch(input, { ...opts, signal: combinedSignal });
+      } finally {
+        if (onCallerAbort && callerSignal) callerSignal.removeEventListener('abort', onCallerAbort);
+        if (onTimeoutAbort) timeoutSignal.removeEventListener('abort', onTimeoutAbort);
+        cleanup();
+      }
+    };
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
       YOLO_CONF,
@@ -300,7 +347,8 @@
       extractDbColumns,
       getReportQueueKey,
       reconcileQueue,
-      classifyCloudError
+      classifyCloudError,
+      createTimedFetch
     };
   }
 
@@ -396,68 +444,82 @@
     });
   }
 
-  function createTimeoutSignal(ms) {
-    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-      return { signal: AbortSignal.timeout(ms), cleanup: () => {} };
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), ms);
-    return { signal: controller.signal, cleanup: () => clearTimeout(timer) };
+  function appendHeadAsset(key, buildElement, resolveValue, label, timeoutMs = ASSET_TIMEOUT_MS) {
+    if (assetPromises.has(key)) return assetPromises.get(key);
+    const p = new Promise((resolve, reject) => {
+      const el = buildElement();
+      el.crossOrigin = 'anonymous';
+      el.referrerPolicy = 'no-referrer';
+      let settled = false;
+      const fail = reason => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        assetPromises.delete(key);
+        el.remove();
+        reject(new Error(reason));
+      };
+      const timer = setTimeout(() => fail(`Timed out loading ${label}: ${key}`), timeoutMs);
+      el.onload = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(resolveValue());
+      };
+      el.onerror = () => fail(`Failed to load ${label}: ${key}`);
+      document.head.appendChild(el);
+    });
+    assetPromises.set(key, p);
+    return p;
   }
 
   function loadStylesheet(href, integrity) {
-    if (assetPromises.has(href)) return assetPromises.get(href);
-    const p = new Promise((resolve, reject) => {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = href;
-      link.integrity = integrity;
-      link.crossOrigin = 'anonymous';
-      link.referrerPolicy = 'no-referrer';
-      link.onload = () => resolve();
-      link.onerror = () => {
-        assetPromises.delete(href);
-        link.remove();
-        reject(new Error('Failed to load stylesheet: ' + href));
-      };
-      document.head.appendChild(link);
-    });
-    assetPromises.set(href, p);
-    return p;
+    return appendHeadAsset(
+      href,
+      () => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.integrity = integrity;
+        return link;
+      },
+      () => undefined,
+      'stylesheet'
+    );
   }
 
   function loadScript(src, integrity, globalName) {
     if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
-    if (assetPromises.has(src)) return assetPromises.get(src);
-    const p = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.integrity = integrity;
-      s.crossOrigin = 'anonymous';
-      s.referrerPolicy = 'no-referrer';
-      s.onload = () => resolve(globalName ? window[globalName] : undefined);
-      s.onerror = () => {
-        assetPromises.delete(src);
-        s.remove();
-        reject(new Error('Failed to load script: ' + src));
-      };
-      document.head.appendChild(s);
-    });
-    assetPromises.set(src, p);
-    return p;
+    return appendHeadAsset(
+      src,
+      () => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.integrity = integrity;
+        return s;
+      },
+      () => (globalName ? window[globalName] : undefined),
+      'script'
+    );
   }
 
   async function fetchVerifiedSubresource(url, integrity) {
-    const res = await fetch(url, {
-      integrity,
-      mode: 'cors',
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer'
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to fetch subresource (${res.status}): ${url}`);
+    const { signal, cleanup } = createTimeoutSignal(ASSET_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        integrity,
+        mode: 'cors',
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+        signal
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to fetch subresource (${res.status}): ${url}`);
+      }
+      return await res.arrayBuffer();
+    } finally {
+      cleanup();
     }
-    return res.arrayBuffer();
   }
 
   // ===== Validation helpers (required radio groups) =====
@@ -762,14 +824,19 @@
       ]);
       if (!window.ort) throw new Error('onnxruntime-web failed to load (check network / CDN)');
       const mjsBlobUrl = URL.createObjectURL(new Blob([mjsBuffer], { type: 'text/javascript' }));
+      const wasmBlobUrl = URL.createObjectURL(new Blob([wasmBuffer], { type: 'application/wasm' }));
       try {
         ort.env.wasm.numThreads = 1;
-        ort.env.wasm.wasmPaths = { mjs: mjsBlobUrl };
-        ort.env.wasm.wasmBinary = wasmBuffer;
+        // Pass both SRI-verified Blob URLs and omit wasmBinary: ort.min.js only wires
+        // Module.locateFile when wasmBinary is unset, otherwise Emscripten crashes calling
+        // new URL("ort-wasm-simd-threaded.wasm", import.meta.url) against a blob: base URL.
+        delete ort.env.wasm.wasmBinary;
+        ort.env.wasm.wasmPaths = { mjs: mjsBlobUrl, wasm: wasmBlobUrl };
         yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ['wasm'] });
         return yoloSession;
       } finally {
         URL.revokeObjectURL(mjsBlobUrl);
+        URL.revokeObjectURL(wasmBlobUrl);
       }
     })();
     try {
@@ -1062,7 +1129,9 @@
           throw new Error('Supabase SDK unavailable');
         }
         if (!sb) {
-          sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            global: { fetch: createTimedFetch(SUPABASE_TIMEOUT_MS) }
+          });
         }
         // Prefer insert-safe health RPC; fall back to head select if older schema is deployed
         const { error: rpcErr } = await sb.rpc('lantern_db_health');
