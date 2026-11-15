@@ -43,7 +43,7 @@ Schema: [`supabase-schema.sql`](supabase-schema.sql) · Legacy AI migration: [`s
 
 1. Fork / clone this repo
 2. Enable GitHub Pages: Settings → Pages → Source = `main` / root
-3. (Optional own cloud DB) Create a free project at [supabase.com](https://supabase.com), run [`supabase-schema.sql`](supabase-schema.sql) in the SQL Editor, and replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `index.html`:
+3. (Optional own cloud DB) Create a free project at [supabase.com](https://supabase.com), run [`supabase-schema.sql`](supabase-schema.sql) in the SQL Editor, and replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `app.js`:
    ```js
    const SUPABASE_URL = 'https://your-project.supabase.co';
    const SUPABASE_ANON_KEY = 'sb_publishable_...';
@@ -59,7 +59,8 @@ Schema: [`supabase-schema.sql`](supabase-schema.sql) · Legacy AI migration: [`s
 ## Repo layout
 
 ```text
-index.html                  # the whole web app (single file)
+index.html                  # semantic HTML & CSS layout + strict CSP header
+app.js                      # client-side logic, YOLO ONNX decoding, & offline sync queue
 .nojekyll                   # disables Jekyll on GitHub Pages
 images/spotted-lanternfly.jpg # public-domain USDA-ARS hero photo (Lycorma delicatula)
 models/best.onnx            # 3-class YOLO ONNX model for browser inference

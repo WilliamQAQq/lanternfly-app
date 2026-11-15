@@ -6,7 +6,7 @@ from PIL import Image
 from ultralytics import YOLO
 
 MODEL_PATH = Path(__file__).resolve().parent / "best.pt"
-CONF_THRESHOLD = 0.25
+CONF_THRESHOLD = 0.7
 MODEL = YOLO(str(MODEL_PATH))
 
 
